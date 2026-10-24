@@ -15,6 +15,19 @@ public sealed record LayoutResult(
     public double PieceArea => Pieces.Sum(p => p.Area);
     public IEnumerable<Piece> CutPieces => Pieces.Where(p => p.Kind == PieceKind.Cut);
 
+    /// <summary>
+    /// 細碎片：最小寬度低於門檻的切割片（預設為磚短邊的 1/3）。
+    /// 與牆邊條寬不同，不論碎片在牆邊、不鋪設區邊緣或轉角都會被標出。
+    /// </summary>
+    public IReadOnlyList<(Piece Piece, double MinWidth)> SmallPieces(double? threshold = null)
+    {
+        double limit = threshold ?? Math.Min(Lattice.TileU, Lattice.TileV) / 3;
+        return CutPieces
+            .Select(p => (Piece: p, MinWidth: PieceGeometry.MinWidth(p.Shape)))
+            .Where(x => x.MinWidth < limit - 1e-6)
+            .ToList();
+    }
+
     /// <summary>給人看的排、欄編號：從房間內最靠近基準線起點的那一排、那一欄算起，以 1 起算。</summary>
     public (int Row, int Column) DisplayIndex(Piece piece)
     {
