@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "name": "王公館 浴室＋廚房＋客廳翻修",
+  "client": "王先生",
+  "tiles": [
+    {
+      "id": "bath30",
+      "name": "止滑霧面磚 30×30",
+      "lengthCm": 30,
+      "widthCm": 30,
+      "thicknessMm": 8,
+      "jointMm": 3,
+      "piecesPerBox": 11,
+      "pricePerBox": 720
+    },
+    {
+      "id": "kit60",
+      "name": "石紋拋光磚 60×60",
+      "lengthCm": 60,
+      "widthCm": 60,
+      "thicknessMm": 10,
+      "jointMm": 2,
+      "piecesPerBox": 4,
+      "pricePerBox": 1180
+    },
+    {
+      "id": "wood",
+      "name": "木紋磚 20×120",
+      "lengthCm": 120,
+      "widthCm": 20,
+      "thicknessMm": 10,
+      "jointMm": 2,
+      "piecesPerBox": 6,
+      "pricePerBox": 1450
+    }
+  ],
+  "pricing": {
+    "adhesiveKgPerM2": 5,
+    "adhesiveKgPerBag": 20,
+    "adhesivePricePerBag": 280,
+    "groutDensityKgPerM3": 1600,
+    "groutKgPerBag": 2,
+    "groutPricePerBag": 150,
+    "laborStraightPerPing": 3500,
+    "laborRunningBondPerPing": 3800,
+    "laborDiagonalPerPing": 4500,
+    "wasteStraight": 0.05,
+    "wasteRunningBond": 0.05,
+    "wasteDiagonal": 0.1
+  },
+  "rooms": [
+    {
+      "id": "bath",
+      "name": "浴室",
+      "shape": {
+        "kind": "polygon",
+        "vertices": [
+          {
+            "x": 0,
+            "y": 0
+          },
+          {
+            "x": 240,
+            "y": 0
+          },
+          {
+            "x": 240,
+            "y": 180
+          },
+          {
+            "x": 0,
+            "y": 180
+          }
+        ],
+        "walls": [],
+        "diagonals": [],
+        "clockwise": false
+      },
+      "exclusions": [
+        {
+          "name": "浴缸",
+          "vertices": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 150,
+              "y": 0
+            },
+            {
+              "x": 150,
+              "y": 75
+            },
+            {
+              "x": 0,
+              "y": 75
+            }
+          ]
+        }
+      ],
+      "tileId": "bath30",
+      "pattern": "straight",
+      "bond": "half",
+      "longSideAlongBaseline": true,
+      "baselineOrigin": {
+        "x": 195,
+        "y": 180
+      },
+      "baselineAngleDeg": 0,
+      "offsetMode": "auto",
+      "offsetU": 0,
+      "offsetV": 0,
+      "reuseOffcuts": true,
+      "allowQuarterTurns": true,
+      "kerfMm": 0,
+      "wasteRateOverride": null
+    },
+    {
+      "id": "kitchen",
+      "name": "廚房",
+      "shape": {
+        "kind": "polygon",
+        "vertices": [
+          {
+            "x": 0,
+            "y": 0
+          },
+          {
+            "x": 360,
+            "y": 0
+          },
+          {
+            "x": 360,
+            "y": 270
+          },
+          {
+            "x": 0,
+            "y": 270
+          }
+        ],
+        "walls": [],
+        "diagonals": [],
+        "clockwise": false
+      },
+      "exclusions": [
+        {
+          "name": "廚具底座",
+          "vertices": [
+            {
+              "x": 0,
+              "y": 210
+            },
+            {
+              "x": 300,
+              "y": 210
+            },
+            {
+              "x": 300,
+              "y": 0
+            },
+            {
+              "x": 360,
+              "y": 0
+            },
+            {
+              "x": 360,
+              "y": 270
+            },
+            {
+              "x": 0,
+              "y": 270
+            }
+          ]
+        }
+      ],
+      "tileId": "kit60",
+      "pattern": "diagonal",
+      "bond": "half",
+      "longSideAlongBaseline": true,
+      "baselineOrigin": {
+        "x": 150,
+        "y": 0
+      },
+      "baselineAngleDeg": 0,
+      "offsetMode": "auto",
+      "offsetU": 0,
+      "offsetV": 0,
+      "reuseOffcuts": true,
+      "allowQuarterTurns": true,
+      "kerfMm": 0,
+      "wasteRateOverride": null
+    },
+    {
+      "id": "living",
+      "name": "L 形客廳",
+      "shape": {
+        "kind": "survey",
+        "vertices": [],
+        "walls": [
+          520.0,
+          280.0,
+          190.0,
+          140.0,
+          330.0,
+          420.0
+        ],
+        "diagonals": [
+          {
+            "from": 0,
+            "to": 2,
+            "length": 590.6
+          },
+          {
+            "from": 0,
+            "to": 3,
+            "length": 432.8
+          },
+          {
+            "from": 0,
+            "to": 4,
+            "length": 534.1
+          }
+        ],
+        "clockwise": false
+      },
+      "exclusions": [
+        {
+          "name": "柱子",
+          "vertices": [
+            {
+              "x": 330,
+              "y": 240
+            },
+            {
+              "x": 370,
+              "y": 240
+            },
+            {
+              "x": 370,
+              "y": 280
+            },
+            {
+              "x": 330,
+              "y": 280
+            }
+          ]
+        }
+      ],
+      "tileId": "wood",
+      "pattern": "runningBond",
+      "bond": "third",
+      "longSideAlongBaseline": true,
+      "baselineOrigin": {
+        "x": 0,
+        "y": 210
+      },
+      "baselineAngleDeg": 0,
+      "offsetMode": "auto",
+      "offsetU": 0,
+      "offsetV": 0,
+      "reuseOffcuts": true,
+      "allowQuarterTurns": false,
+      "kerfMm": 0,
+      "wasteRateOverride": null
+    }
+  ]
+}
