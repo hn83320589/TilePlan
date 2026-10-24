@@ -17,6 +17,8 @@ public sealed class Region
 
     public bool IsEmpty => Polygons.Count == 0;
 
+    public double Perimeter => Polygons.Sum(p => p.Perimeter);
+
     public Bounds Bounds => Bounds.Of(Polygons.SelectMany(p => p.Vertices));
 
     /// <summary>可鋪設區域 = 房間 − ∪不鋪設區。</summary>

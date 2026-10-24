@@ -26,6 +26,38 @@ public static class PolygonOps
         return all.Count == 0 ? Region.Empty : FromPaths(Clipper.Union(all, FillRule.NonZero));
     }
 
+    /// <summary>往外擴張（正）或往內縮（負）指定距離，直角保持直角。</summary>
+    public static Region Inflate(Region r, double delta) =>
+        FromPaths(Clipper.InflatePaths(ToPaths(r), delta * Scale, JoinType.Miter, EndType.Polygon));
+
+    /// <summary>把區域拆成互不相連的部分（每部分含自己的洞）。</summary>
+    public static IReadOnlyList<Region> Components(Region r)
+    {
+        if (r.Polygons.Count <= 1) return r.IsEmpty ? [] : [r];
+        var tree = new PolyTree64();
+        var clipper = new Clipper64();
+        clipper.AddSubject(ToPaths(r));
+        clipper.Execute(ClipType.Union, FillRule.NonZero, tree);
+
+        var result = new List<Region>();
+        void Walk(PolyPath64 node)
+        {
+            for (int i = 0; i < node.Count; i++)
+            {
+                var outer = node[i];
+                var paths = new Paths64 { outer.Polygon! };
+                for (int h = 0; h < outer.Count; h++)
+                {
+                    paths.Add(outer[h].Polygon!);
+                    Walk(outer[h]);   // 洞裡的島
+                }
+                result.Add(FromPaths(paths));
+            }
+        }
+        Walk(tree);
+        return result;
+    }
+
     /// <summary>把折線（開放路徑）裁切到區域內，回傳區域內的總長度（cm）。</summary>
     public static double ClippedLineLength(IEnumerable<(Vec2 A, Vec2 B)> segments, Region region)
     {
