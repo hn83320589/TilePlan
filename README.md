@@ -11,7 +11,7 @@
 - **系統分析與架構設計**：[docs/architecture.md](docs/architecture.md)
 - **測試報告**：[docs/test-report.md](docs/test-report.md)
 
-![排版結果：L 形客廳交丁 1/3](docs/images/layout-running-bond.png)
+![操作流程：輸入 L 形實測值 → 解出形狀與誤差範圍 → 選擇鋪法 → 自動偏移 → 點選切割片 → 切割清單 → 報價單](docs/images/flow.gif)
 
 ---
 
