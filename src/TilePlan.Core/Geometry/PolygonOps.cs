@@ -3,11 +3,15 @@ using Clipper2Lib;
 namespace TilePlan.Core.Geometry;
 
 /// <summary>
-/// Clipper2 轉接層。進出 Clipper 時把公分轉成整數：1 單位 = 0.01 mm。
+/// Clipper2 轉接層。進出 Clipper 時把公分轉成整數：1 單位 = 1 µm。
+/// RectClip 求交點時會有 ±1 單位的誤差，用 µm 才能讓一片磚的面積誤差低於 0.01 cm²。
 /// </summary>
 public static class PolygonOps
 {
-    public const double Scale = 1000; // 每公分的整數單位數
+    public const double Scale = 10_000; // 每公分的整數單位數
+
+    /// <summary>對齊到 Clipper 的整數格。</summary>
+    public static double Snap(double cm) => Math.Round(cm * Scale) / Scale;
 
     public static Region Intersect(Region a, Region b) => Run(ClipType.Intersection, a, b);
 
@@ -40,6 +44,19 @@ public static class PolygonOps
             for (int i = 1; i < path.Count; i++)
                 total += Math.Sqrt(Clipper.DistanceSqr(path[i - 1], path[i]));
         return total / Scale;
+    }
+
+    /// <summary>
+    /// 以對齊座標軸的長方形裁切區域（Clipper 的 RectClip 比一般布林運算快很多）。
+    /// RectClip 逐條路徑處理，含洞時要再做一次聯集讓結果正規化。
+    /// </summary>
+    public static Region RectClip(Region region, double minX, double minY, double maxX, double maxY)
+    {
+        var rect = new Rect64((long)Math.Round(minX * Scale), (long)Math.Round(minY * Scale),
+                              (long)Math.Round(maxX * Scale), (long)Math.Round(maxY * Scale));
+        var result = Clipper.RectClip(rect, ToPaths(region));
+        if (result.Count > 1) result = Clipper.Union(result, FillRule.NonZero);
+        return FromPaths(result);
     }
 
     private static Region Run(ClipType type, Region a, Region b)
