@@ -213,6 +213,8 @@ table.grid input[type="number"] { min-width: 70px; }
   .quote-sheet { border: 0; padding: 0; max-width: none; }
   table { page-break-inside: auto; }
   thead { display: table-header-group; }
+  /* Chrome 會把 tfoot 重複印在每一頁底部，第 1 頁就出現全部房間的合計，容易誤讀（測試報告 F4） */
+  tfoot { display: table-row-group; }
   tr { break-inside: avoid; page-break-inside: avoid; }
   .quote-sheet h2 { break-after: avoid; }
 }
