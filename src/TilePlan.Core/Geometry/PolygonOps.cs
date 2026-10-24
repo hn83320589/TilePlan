@@ -1,0 +1,80 @@
+using Clipper2Lib;
+
+namespace TilePlan.Core.Geometry;
+
+/// <summary>
+/// Clipper2 轉接層。進出 Clipper 時把公分轉成整數：1 單位 = 0.01 mm。
+/// </summary>
+public static class PolygonOps
+{
+    public const double Scale = 1000; // 每公分的整數單位數
+
+    public static Region Intersect(Region a, Region b) => Run(ClipType.Intersection, a, b);
+
+    public static Region Difference(Region a, Region b) => Run(ClipType.Difference, a, b);
+
+    public static Region Union(Region a, Region b) => Run(ClipType.Union, a, b);
+
+    public static Region Union(IEnumerable<Region> regions)
+    {
+        var all = new Paths64();
+        foreach (var r in regions) all.AddRange(ToPaths(r));
+        return all.Count == 0 ? Region.Empty : FromPaths(Clipper.Union(all, FillRule.NonZero));
+    }
+
+    /// <summary>把折線（開放路徑）裁切到區域內，回傳區域內的總長度（cm）。</summary>
+    public static double ClippedLineLength(IEnumerable<(Vec2 A, Vec2 B)> segments, Region region)
+    {
+        var open = new Paths64(segments.Select(s => new Path64 { ToPoint(s.A), ToPoint(s.B) }));
+        if (open.Count == 0 || region.IsEmpty) return 0;
+
+        var clipper = new Clipper64();
+        clipper.AddOpenSubject(open);
+        clipper.AddClip(ToPaths(region));
+        var closed = new Paths64();
+        var openResult = new Paths64();
+        clipper.Execute(ClipType.Intersection, FillRule.NonZero, closed, openResult);
+
+        double total = 0;
+        foreach (var path in openResult)
+            for (int i = 1; i < path.Count; i++)
+                total += Math.Sqrt(Clipper.DistanceSqr(path[i - 1], path[i]));
+        return total / Scale;
+    }
+
+    private static Region Run(ClipType type, Region a, Region b)
+    {
+        if (a.IsEmpty && type != ClipType.Union) return Region.Empty;
+        var result = Clipper.BooleanOp(type, ToPaths(a), ToPaths(b), FillRule.NonZero);
+        return FromPaths(result);
+    }
+
+    internal static Point64 ToPoint(Vec2 v) =>
+        new((long)Math.Round(v.X * Scale), (long)Math.Round(v.Y * Scale));
+
+    internal static Paths64 ToPaths(Region r)
+    {
+        var paths = new Paths64(r.Polygons.Count);
+        foreach (var poly in r.Polygons)
+        {
+            var path = new Path64(poly.Count);
+            foreach (var v in poly.Vertices) path.Add(ToPoint(v));
+            paths.Add(path);
+        }
+        return paths;
+    }
+
+    internal static Region FromPaths(Paths64 paths)
+    {
+        var polys = new List<Polygon>(paths.Count);
+        foreach (var path in paths)
+        {
+            if (path.Count < 3) continue;
+            var verts = new Vec2[path.Count];
+            for (int i = 0; i < path.Count; i++)
+                verts[i] = new Vec2(path[i].X / Scale, path[i].Y / Scale);
+            polys.Add(new Polygon(verts));
+        }
+        return new Region(polys);
+    }
+}
