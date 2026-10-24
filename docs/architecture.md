@@ -392,7 +392,7 @@ for 每片切割片 p:
 ### 5.3 狀態與儲存
 
 - `ProjectStore`（singleton）：持有目前的 Project，提供修改方法並發出變更事件。
-- `AutoSaveService`：訂閱變更，debounce 500 ms 後寫入 localStorage；啟動時還原。透過 `IBrowserStorage` 介面注入，測試時換成記憶體實作。
+- `AutoSaveService`：訂閱變更後立即寫入 localStorage，啟動時還原。儲存進行中又有修改時只做標記，完成後再存一次最新狀態，以合併連續修改。原設計是 debounce 500 ms（實作修正：延遲期間重新整理會遺失修改，見測試報告 F3）。透過 `IBrowserStorage` 介面注入，測試時換成記憶體實作。
 - 匯出：產生 JSON → JS 觸發下載；匯入：`<InputFile>` 讀檔 → 反序列化 → 驗證 schemaVersion。
 
 ---

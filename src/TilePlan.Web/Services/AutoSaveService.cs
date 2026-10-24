@@ -2,14 +2,17 @@ using TilePlan.Core.Projects;
 
 namespace TilePlan.Web.Services;
 
-/// <summary>專案一有變更就延遲寫入瀏覽器儲存（連續修改只寫最後一次）；啟動時還原。</summary>
+/// <summary>
+/// 專案一有變更就立即寫入瀏覽器儲存，啟動時還原。
+/// 不使用延遲（debounce）：延遲期間重新整理或關閉分頁會遺失最後的修改（測試報告 F3）。
+/// 儲存進行中又有修改時只做標記，完成後再存一次最新狀態，所以連續修改不會排出一長串寫入。
+/// </summary>
 public sealed class AutoSaveService(ProjectStore store, IBrowserStorage storage) : IDisposable
 {
     public const string StorageKey = "tileplan.project.v1";
 
-    private CancellationTokenSource? _pending;
-
-    public TimeSpan Delay { get; init; } = TimeSpan.FromMilliseconds(400);
+    private bool _dirty;
+    private Task _pump = Task.CompletedTask;
 
     /// <summary>最近一次儲存或還原失敗的原因；成功時為 null。</summary>
     public string? LastError { get; private set; }
@@ -38,23 +41,21 @@ public sealed class AutoSaveService(ProjectStore store, IBrowserStorage storage)
 
     public void Start() => store.Changed += OnChanged;
 
+    /// <summary>等目前排定的儲存全部完成（測試用）。</summary>
+    public Task WhenIdle() => _pump;
+
     private void OnChanged()
     {
-        _pending?.Cancel();
-        var cts = _pending = new CancellationTokenSource();
-        _ = SaveLaterAsync(cts.Token);
+        _dirty = true;
+        if (_pump.IsCompleted) _pump = PumpAsync();
     }
 
-    private async Task SaveLaterAsync(CancellationToken token)
+    private async Task PumpAsync()
     {
-        try
+        while (_dirty)
         {
-            await Task.Delay(Delay, token);
+            _dirty = false;
             await SaveNowAsync();
-        }
-        catch (TaskCanceledException)
-        {
-            // 被下一次修改取代，不需要儲存
         }
     }
 
@@ -73,9 +74,5 @@ public sealed class AutoSaveService(ProjectStore store, IBrowserStorage storage)
         Saved?.Invoke();
     }
 
-    public void Dispose()
-    {
-        store.Changed -= OnChanged;
-        _pending?.Cancel();
-    }
+    public void Dispose() => store.Changed -= OnChanged;
 }
