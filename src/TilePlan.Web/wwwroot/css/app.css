@@ -185,7 +185,7 @@ table.grid input[type="number"] { min-width: 70px; }
 .area-text .ping { color: var(--muted); margin-left: 8px; }
 
 /* ---------- 切割清單 ---------- */
-.stock-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.stock-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 .stock { background: white; border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 10px 12px; }
 .stock h3 { display: flex; justify-content: space-between; font-size: var(--step0); margin-bottom: 6px; }
 .stock svg { width: 100%; height: auto; max-height: 200px; display: block; background: var(--grout); margin-bottom: 6px; }
