@@ -85,7 +85,29 @@ public static class SurveySolver
             ? $"形狀已解出，但量測可能有誤：{LabelPair(worst.From, worst.To)} 的殘差為 {worst.Residual:+0.0;-0.0} cm，請複量。"
             : "形狀已解出。";
 
-        return new SurveyResult(SurveyStatus.Solved, new Polygon(solution), message, 0, [], residuals);
+        return new SurveyResult(SurveyStatus.Solved, new Polygon(solution), message, 0, [], residuals)
+        {
+            Alternatives = AlternativeShapes(search.ExteriorDiagonalShapes, solution, bars, input),
+        };
+    }
+
+    /// <summary>
+    /// 只因「對角線穿牆」被排除的形狀。光看長度無法分辨使用者是否記錯對角線的角落
+    /// （正確的 L 形輸入也會有這種形狀），所以不當成警告，而是列出來讓使用者對照現場。
+    /// </summary>
+    private static IReadOnlyList<Polygon> AlternativeShapes(List<Vec2[]> candidates, Vec2[] solution, List<Bar> bars, SurveyInput input)
+    {
+        var measured = bars.Select(b => (b.From, b.To, b.Length)).ToList();
+        var result = new List<Vec2[]>();
+        foreach (var raw in candidates)
+        {
+            var refined = LeastSquares.Refine(raw, measured);
+            if (!IsSimpleWithOrientation(new Polygon(refined), input)) continue;
+            if (MaxDistance(refined, solution) <= SameSolutionTolerance) continue;
+            if (result.Any(r => MaxDistance(r, refined) <= SameSolutionTolerance)) continue;
+            result.Add(refined);
+        }
+        return result.Select(r => new Polygon(r)).ToList();
     }
 
     private static SurveyResult Fail(SurveyStatus status, string message, int missing, IReadOnlyList<(int, int)> suggested) =>
@@ -148,6 +170,9 @@ public static class SurveySolver
         private int _leaves;
 
         public List<Vec2[]> Solutions { get; } = [];
+
+        /// <summary>長度都符合、不自交、方向也對，只因「對角線穿牆」被排除的形狀。</summary>
+        public List<Vec2[]> ExteriorDiagonalShapes { get; } = [];
         public string? FirstConflict { get; private set; }
 
         public void Run()
@@ -164,7 +189,9 @@ public static class SurveySolver
             {
                 _leaves++;
                 var pts = _pos.Select(p => p!.Value).ToArray();
-                if (IsValidShape(new Polygon(pts), input)) Solutions.Add(pts);
+                var poly = new Polygon(pts);
+                if (IsValidShape(poly, input)) Solutions.Add(pts);
+                else if (IsSimpleWithOrientation(poly, input)) ExteriorDiagonalShapes.Add(pts);
                 return;
             }
 
@@ -210,14 +237,14 @@ public static class SurveySolver
     }
 
     /// <summary>不自交、方向與量測方向一致、所有量測的對角線都在房間內（捲尺不能穿牆）。</summary>
-    private static bool IsValidShape(Polygon poly, SurveyInput input)
-    {
-        if (!poly.IsSimple()) return false;
-        if (poly.IsCounterClockwise == input.Clockwise) return false;
-        return input.Diagonals.All(d => DiagonalIsInterior(poly, d.From, d.To));
-    }
+    private static bool IsValidShape(Polygon poly, SurveyInput input) =>
+        IsSimpleWithOrientation(poly, input) && input.Diagonals.All(d => DiagonalIsInterior(poly, d.From, d.To));
 
-    private static bool DiagonalIsInterior(Polygon poly, int i, int j)
+    private static bool IsSimpleWithOrientation(Polygon poly, SurveyInput input) =>
+        poly.IsSimple() && poly.IsCounterClockwise != input.Clockwise;
+
+    /// <summary>對角線 i–j 是否完全在房間內，也就是捲尺量得到。</summary>
+    public static bool DiagonalIsInterior(Polygon poly, int i, int j)
     {
         var (a, b) = (poly[i], poly[j]);
         int n = poly.Count;

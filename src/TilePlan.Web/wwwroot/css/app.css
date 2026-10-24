@@ -177,6 +177,11 @@ table.grid input[type="number"] { min-width: 70px; }
 .svg-diag { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
 .svg-viol { fill: none; stroke: var(--danger); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 
+/* 實測推算的其他可能形狀（縮圖） */
+.alt-shapes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.alt-shapes figure { margin: 0; background: white; border: 1px solid var(--line); border-radius: var(--radius-panel); padding: 6px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.alt-shapes svg { width: 120px; height: 100px; }
+
 /* ---------- 統計 ---------- */
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; margin: 0; }
 .stats dt { color: var(--muted); font-size: var(--step-1); }

@@ -119,7 +119,7 @@
         }
         else
         {
-            <SurveyForm Room="Room" Result="Result" OnChanged="CommitSurvey" OnConvert="ConvertToPolygon" />
+            <SurveyForm Room="Room" Result="Result" OnChanged="CommitSurvey" OnAdopt="AdoptShape" />
         }
     </div>
 </div>
@@ -250,12 +250,13 @@
         if (Result.Polygon is not null && _view.Width < 1) Refit();
     }
 
-    private async Task ConvertToPolygon()
+    /// <summary>把形狀轉成座標模式；頂點順序與實測時相同，牆的名稱不變。</summary>
+    private async Task AdoptShape(Polygon polygon)
     {
-        if (Result.Polygon is null) return;
-        Shape.Vertices = Result.Polygon.Vertices.Select(v => new Point2(Math.Round(v.X, 1), Math.Round(v.Y, 1))).ToList();
+        Shape.Vertices = polygon.Vertices.Select(v => new Point2(Math.Round(v.X, 1), Math.Round(v.Y, 1))).ToList();
         Shape.Kind = ShapeKind.Polygon;
         await Commit();
+        Refit();
     }
 
     private Task Commit() => OnChanged.InvokeAsync();

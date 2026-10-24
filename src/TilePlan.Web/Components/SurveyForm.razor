@@ -23,10 +23,7 @@
 
 <div class="panel">
     <div class="row"><h3>對角線</h3><span class="spacer"></span><button class="btn small" @onclick="AddDiagonal">加一條</button></div>
-    @if (Shape.Diagonals.Count == 0)
-    {
-        <p class="small muted">還沒有對角線。只量牆長時角度未知，至少要量 n − 3 條對角線。</p>
-    }
+    <p class="small muted">對角線必須能在室內直接拉捲尺量到，不能穿過牆。只量牆長時角度未知，至少要量 n − 3 條。</p>
     <table class="grid">
         <tbody>
             @for (int i = 0; i < Shape.Diagonals.Count; i++)
@@ -68,9 +65,37 @@
         @if (survey.Status == SurveyStatus.Solved)
         {
             <p class="small" style="margin-top: 6px">最大殘差 @survey.MaxResidual.ToString("0.00") cm。
-                <button class="btn small" @onclick="OnConvert">轉成座標模式微調</button></p>
+                <button class="btn small" @onclick="() => OnAdopt.InvokeAsync(survey.Polygon!)">轉成座標模式微調</button></p>
         }
     </div>
+
+    @if (survey.Status == SurveyStatus.Solved && survey.Alternatives.Count > 0)
+    {
+        <div class="notice info">
+            <p>請對照現場確認左邊的形狀。同樣的長度還能組成下面 @survey.Alternatives.Count 種形狀，只是它們的對角線會穿過牆（紅線）。
+                如果現場其實長得像下面某一種，代表對角線兩端的角落記錯了。</p>
+            <div class="alt-shapes">
+                @foreach (var alt in survey.Alternatives)
+                {
+                    var b = alt.Bounds;
+                    double pad = Math.Max(b.Width, b.Height) * 0.08;
+                    <figure>
+                        <svg viewBox="@($"{Svg.N(b.MinX - pad)} {Svg.N(-b.MaxY - pad)} {Svg.N(b.Width + 2 * pad)} {Svg.N(b.Height + 2 * pad)}")">
+                            <g transform="scale(1,-1)">
+                                <polygon class="svg-room-draft" points="@Svg.Points(alt.Vertices)"></polygon>
+                                @foreach (var d in Shape.Diagonals.Where(d => d.From < alt.Count && d.To < alt.Count))
+                                {
+                                    bool inside = SurveySolver.DiagonalIsInterior(alt, d.From, d.To);
+                                    <line class="@(inside ? "svg-diag" : "svg-viol")" x1="@Svg.N(alt[d.From].X)" y1="@Svg.N(alt[d.From].Y)" x2="@Svg.N(alt[d.To].X)" y2="@Svg.N(alt[d.To].Y)"></line>
+                                }
+                            </g>
+                        </svg>
+                        <button class="btn small" @onclick="() => OnAdopt.InvokeAsync(alt)">採用這個形狀</button>
+                    </figure>
+                }
+            </div>
+        </div>
+    }
 }
 else if (Result.Error is not null)
 {
@@ -81,7 +106,8 @@ else if (Result.Error is not null)
     [Parameter, EditorRequired] public Room Room { get; set; } = default!;
     [Parameter, EditorRequired] public RoomResult Result { get; set; } = default!;
     [Parameter] public EventCallback OnChanged { get; set; }
-    [Parameter] public EventCallback OnConvert { get; set; }
+    /// <summary>把指定的形狀轉成座標模式（解出的形狀，或使用者認出的其他形狀）。</summary>
+    [Parameter] public EventCallback<TilePlan.Core.Geometry.Polygon> OnAdopt { get; set; }
 
     private RoomShape Shape => Room.Shape;
 

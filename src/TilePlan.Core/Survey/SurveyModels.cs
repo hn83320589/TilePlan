@@ -33,4 +33,10 @@ public sealed record SurveyResult(
     IReadOnlyList<MeasurementResidual> Residuals)
 {
     public double MaxResidual => Residuals.Count == 0 ? 0 : Residuals.Max(r => Math.Abs(r.Residual));
+
+    /// <summary>
+    /// 長度同樣吻合、但需要對角線穿過牆外才量得到的其他形狀。
+    /// 若現場其實是其中一個，代表對角線兩端的角落記錯了。
+    /// </summary>
+    public IReadOnlyList<Polygon> Alternatives { get; init; } = [];
 }

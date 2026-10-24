@@ -156,6 +156,63 @@ public class SurveySolverTests
         Assert.Contains("量測可能有誤", result.Message);
     }
 
+    /// <summary>對角線 i–j 是否完全在房間內（捲尺量得到）。</summary>
+    private static bool IsInterior(Polygon poly, int i, int j)
+    {
+        for (int k = 0; k < poly.Count; k++)
+        {
+            int k2 = (k + 1) % poly.Count;
+            if (k == i || k == j || k2 == i || k2 == j) continue;
+            if (Segment.Intersects(poly[i], poly[j], poly[k], poly[k2])) return false;
+        }
+        return poly.Contains((poly[i] + poly[j]) / 2);
+    }
+
+    /// <summary>把已知座標轉到求解器的座標系：A 在原點、B 在 +x 軸。</summary>
+    private static Vec2[] ToSolverFrame(Vec2[] pts)
+    {
+        var dir = (pts[1] - pts[0]).Normalized();
+        return pts.Select(p => new Vec2((p - pts[0]).Dot(dir), (p - pts[0]).Dot(dir.Perp()))).ToArray();
+    }
+
+    [Fact]
+    public void L_shape_lists_alternative_shapes_that_need_exterior_diagonals()
+    {
+        // 光看長度，L 形還能組成另一種形狀，只是那種形狀的對角線會穿過牆外
+        var diags = new[] { Diag(LShape, 0, 2), Diag(LShape, 0, 3), Diag(LShape, 0, 4) };
+        var result = SurveySolver.Solve(new SurveyInput(WallsOf(LShape), diags));
+
+        Assert.Equal(SurveyStatus.Solved, result.Status);
+        AssertMatches(LShape, result.Polygon!, 0.5);
+        Assert.NotEmpty(result.Alternatives);
+        Assert.All(result.Alternatives, alt =>
+            Assert.Contains(diags, d => !IsInterior(alt, d.From, d.To)));
+    }
+
+    [Fact]
+    public void Mislabelled_diagonals_keep_the_real_room_among_the_alternatives()
+    {
+        // 從 B 角量扇形對角線：C–E 會穿過 L 的缺口，現實中捲尺量不到（使用者把角落記錯了）。
+        // 求解器只能依「對角線在室內」選出另一個形狀，但真實的房間必須出現在候選形狀中，讓使用者認得出來
+        var fromB = LShape.Skip(1).Concat(LShape.Take(1)).ToArray();
+        var input = new SurveyInput(WallsOf(fromB), [Diag(fromB, 0, 2), Diag(fromB, 0, 3), Diag(fromB, 0, 4)]);
+
+        var result = SurveySolver.Solve(input);
+
+        var truth = ToSolverFrame(fromB);
+        Assert.Equal(SurveyStatus.Solved, result.Status);
+        Assert.True(truth.Zip(result.Polygon!.Vertices, (e, g) => e.DistanceTo(g)).Max() > 50, "這組輸入解出的主要形狀本來就不是真實的房間");
+        Assert.Contains(result.Alternatives, alt => truth.Zip(alt.Vertices, (e, g) => e.DistanceTo(g)).Max() < 0.5);
+    }
+
+    [Fact]
+    public void Rectangle_has_no_alternative_shapes()
+    {
+        var result = SurveySolver.Solve(new SurveyInput([300, 200, 300, 200], [new(0, 2, Math.Sqrt(300 * 300 + 200 * 200))]));
+
+        Assert.Empty(result.Alternatives);
+    }
+
     [Fact]
     public void Diagonal_referencing_missing_vertex_is_rejected()
     {
