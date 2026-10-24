@@ -1,0 +1,199 @@
+@using TilePlan.Core.Geometry
+
+<div class="columns">
+    <div>
+        @if (Result.Polygon is null)
+        {
+            <div class="notice warn"><p>請先完成房間形狀：@Result.Error</p></div>
+        }
+        else
+        {
+            <Canvas View="_view" CssClass="@(_drawing ? "adding" : "")" OnClick="OnCanvasClick" OnDrag="OnDrag" OnDrop="OnDrop"
+                    Hint="@(_drawing ? $"點選畫布為「{Selected?.Name}」加頂點（吸附 5 cm）" : "點選不鋪設區來選取，拖曳頂點調整")">
+                <ChildContent>
+                    <polygon class="svg-room-draft" points="@Svg.Points(Result.Polygon.Vertices)"></polygon>
+                    @for (int k = 0; k < Room.Exclusions.Count; k++)
+                    {
+                        var ex = Room.Exclusions[k];
+                        var pts = ex.Vertices.Select(v => v.ToVec()).ToList();
+                        bool selected = k == _selected;
+                        if (pts.Count >= 3)
+                        {
+                            <polygon class="svg-excl @(selected ? "selected" : "")" data-handle="@($"x{k}")" points="@Svg.Points(pts)"></polygon>
+                            var c = Bounds.Of(pts);
+                            <SvgText X="(c.MinX + c.MaxX) / 2" Y="(c.MinY + c.MaxY) / 2" Size="LabelSize">@ex.Name</SvgText>
+                        }
+                        else if (pts.Count == 2)
+                        {
+                            <polyline class="svg-excl selected" points="@Svg.Points(pts)"></polyline>
+                        }
+                        @if (selected)
+                        {
+                            @for (int i = 0; i < pts.Count; i++)
+                            {
+                                <circle class="svg-handle" data-handle="@($"e{k}-{i}")" cx="@Svg.N(pts[i].X)" cy="@Svg.N(pts[i].Y)" r="@Svg.N(HandleRadius)"></circle>
+                            }
+                        }
+                    }
+                </ChildContent>
+            </Canvas>
+        }
+    </div>
+
+    <div>
+        <div class="panel">
+            <h3>新增長方形</h3>
+            <div class="fields" style="grid-template-columns: repeat(2, 1fr)">
+                <label class="field"><span>名稱</span><input @bind="_name" /></label>
+                <label class="field"><span>左下 X</span><input type="number" step="1" @bind="_x" /></label>
+                <label class="field"><span>左下 Y</span><input type="number" step="1" @bind="_y" /></label>
+                <label class="field"><span>寬</span><input type="number" step="1" @bind="_w" /></label>
+                <label class="field"><span>深</span><input type="number" step="1" @bind="_h" /></label>
+            </div>
+            <div class="row" style="margin-top: 10px">
+                <button class="btn primary" @onclick="AddRectangle">新增長方形</button>
+                <button class="btn" @onclick="StartPolygon">畫多邊形</button>
+            </div>
+        </div>
+
+        @if (Room.Exclusions.Count == 0)
+        {
+            <p class="muted">沒有不鋪設區。柱子、浴缸、廚具底座等不鋪磚的位置可以在這裡加入。</p>
+        }
+        @for (int k = 0; k < Room.Exclusions.Count; k++)
+        {
+            int index = k;
+            var ex = Room.Exclusions[k];
+            <div class="panel" style="@(k == _selected ? "border-color: var(--ink)" : "")" @onclick="() => Select(index)">
+                <div class="row">
+                    <input @bind="ex.Name" @bind:after="Commit" aria-label="名稱" />
+                    <span class="spacer"></span>
+                    @if (_drawing && k == _selected)
+                    {
+                        <button class="btn small primary" @onclick="() => _drawing = false" @onclick:stopPropagation>完成</button>
+                    }
+                    <button class="btn small danger" @onclick="() => Remove(index)" @onclick:stopPropagation>刪除</button>
+                </div>
+                @if (k == _selected)
+                {
+                    <table class="grid" style="margin-top: 8px">
+                        <tbody>
+                            @for (int i = 0; i < ex.Vertices.Count; i++)
+                            {
+                                var v = ex.Vertices[i];
+                                int vi = i;
+                                <tr>
+                                    <td><input type="number" step="0.1" @bind="v.X" @bind:after="Commit" aria-label="X" /></td>
+                                    <td><input type="number" step="0.1" @bind="v.Y" @bind:after="Commit" aria-label="Y" /></td>
+                                    <td><button class="btn small danger" @onclick="() => RemoveVertex(ex, vi)">✕</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Room Room { get; set; } = default!;
+    [Parameter, EditorRequired] public RoomResult Result { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private Bounds _view;
+    private string? _viewFor;
+    private int _selected = -1;
+    private bool _drawing;
+    private string _name = "柱子";
+    private double _x, _y, _w = 60, _h = 60;
+
+    private Exclusion? Selected => _selected >= 0 && _selected < Room.Exclusions.Count ? Room.Exclusions[_selected] : null;
+    private double Size => Math.Max(Math.Max(_view.Width, _view.Height), 50);
+    private double HandleRadius => Size / 90;
+    private double LabelSize => Size / 45;
+
+    protected override void OnParametersSet()
+    {
+        if (Result.Polygon is not null && _viewFor != Room.Id)
+        {
+            _viewFor = Room.Id;
+            _view = Result.Polygon.Bounds;
+        }
+    }
+
+    private void Select(int k) => _selected = k;
+
+    private Task Commit() => OnChanged.InvokeAsync();
+
+    private async Task AddRectangle()
+    {
+        if (_w <= 0 || _h <= 0) return;
+        Room.Exclusions.Add(new Exclusion
+        {
+            Name = string.IsNullOrWhiteSpace(_name) ? "不鋪設區" : _name,
+            Vertices = [new(_x, _y), new(_x + _w, _y), new(_x + _w, _y + _h), new(_x, _y + _h)],
+        });
+        _selected = Room.Exclusions.Count - 1;
+        await Commit();
+    }
+
+    private void StartPolygon()
+    {
+        Room.Exclusions.Add(new Exclusion { Name = string.IsNullOrWhiteSpace(_name) ? "不鋪設區" : _name });
+        _selected = Room.Exclusions.Count - 1;
+        _drawing = true;
+    }
+
+    private async Task Remove(int k)
+    {
+        Room.Exclusions.RemoveAt(k);
+        _selected = -1;
+        _drawing = false;
+        await Commit();
+    }
+
+    private async Task RemoveVertex(Exclusion ex, int i)
+    {
+        ex.Vertices.RemoveAt(i);
+        await Commit();
+    }
+
+    private static double Snap(double v) => Math.Round(v / 5) * 5;
+
+    private async Task OnCanvasClick((double X, double Y, string? Handle) e)
+    {
+        if (_drawing && Selected is { } ex)
+        {
+            ex.Vertices.Add(new Point2(Snap(e.X), Snap(e.Y)));
+            await Commit();
+            return;
+        }
+        if (e.Handle is { } h && h.StartsWith('x') && int.TryParse(h[1..], out int k)) _selected = k;
+        else if (e.Handle is null) _selected = -1;
+    }
+
+    private bool TryVertex(string handle, out Point2 vertex)
+    {
+        vertex = default!;
+        var parts = handle.TrimStart('e').Split('-');
+        if (!handle.StartsWith('e') || parts.Length != 2 || !int.TryParse(parts[0], out int k) || !int.TryParse(parts[1], out int i)) return false;
+        if (k >= Room.Exclusions.Count || i >= Room.Exclusions[k].Vertices.Count) return false;
+        vertex = Room.Exclusions[k].Vertices[i];
+        return true;
+    }
+
+    private void OnDrag((string Handle, double X, double Y) e)
+    {
+        if (!TryVertex(e.Handle, out var v)) return;
+        v.X = Snap(e.X);
+        v.Y = Snap(e.Y);
+        StateHasChanged();
+    }
+
+    private async Task OnDrop((string Handle, double X, double Y) e)
+    {
+        OnDrag(e);
+        await Commit();
+    }
+}

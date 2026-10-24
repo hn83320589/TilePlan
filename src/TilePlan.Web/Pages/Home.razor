@@ -1,7 +1,201 @@
 @page "/"
+@inject ProjectStore Store
+@inject TilePlanJs Js
+@inject NavigationManager Nav
 
-<PageTitle>TilePlan 磁磚排版</PageTitle>
+<PageTitle>@Project.Name — TilePlan</PageTitle>
 
-<h1>TilePlan 磁磚排版與材料估算</h1>
+<div class="page-head">
+    <h1>@Project.Name</h1>
+    <div class="row no-print">
+        <button class="btn" @onclick="Export">匯出 JSON</button>
+        <label class="btn file-btn">匯入 JSON<InputFile OnChange="Import" accept=".json,application/json" /></label>
+        <button class="btn" @onclick="LoadSample">載入範例</button>
+        <button class="btn" @onclick="LoadPerformanceSample" title="400 × 300 房間、10 × 10 小磚，約 1,200 片">效能測試範例</button>
+        <button class="btn danger" @onclick="NewProject">新專案</button>
+    </div>
+</div>
 
-<p>開發中。</p>
+@if (_message is not null)
+{
+    <div class="notice @(_messageIsError ? "warn" : "ok")"><p>@_message</p></div>
+}
+
+<section class="panel">
+    <h2>專案</h2>
+    <div class="fields" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))">
+        <label class="field"><span>專案名稱</span><input @bind="Project.Name" @bind:after="Changed" /></label>
+        <label class="field"><span>業主</span><input @bind="Project.Client" @bind:after="Changed" /></label>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="row"><h2>房間</h2><span class="spacer"></span><button class="btn" @onclick="AddRoom">新增房間</button></div>
+    @if (Project.Rooms.Count == 0)
+    {
+        <p class="muted">還沒有房間。新增一間，或載入範例專案看看完整流程。</p>
+    }
+    else
+    {
+        <table class="grid">
+            <thead><tr><th>名稱</th><th class="num">面積</th><th>磁磚</th><th>鋪法</th><th>狀態</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var room in Project.Rooms)
+                {
+                    var r = Store.Result(room);
+                    <tr>
+                        <td><a href="@($"room/{room.Id}")">@room.Name</a></td>
+                        <td class="num">@(r.Ok ? $"{Fmt.D2(r.Area.M2Rounded)} m²／{Fmt.D2(r.Area.PingRounded)} 坪" : "—")</td>
+                        <td>@(Project.FindTile(room.TileId)?.Name ?? "未選擇")</td>
+                        <td>@room.ToPattern().DisplayName</td>
+                        <td>
+                            @if (!r.Ok) { <span style="color: var(--danger)">@r.Error</span> }
+                            else if (r.Offset is { Satisfied: false }) { <span class="muted">切條未全部達 1/3</span> }
+                            else { <span style="color: var(--ok)">完成</span> }
+                        </td>
+                        <td class="num">
+                            <button class="btn small" @onclick="() => Duplicate(room)">複製</button>
+                            <button class="btn small danger" @onclick="() => RemoveRoom(room)">刪除</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="panel">
+    <div class="row"><h2>磁磚</h2><span class="spacer"></span><button class="btn" @onclick="AddTile">新增磁磚</button></div>
+    <table class="grid">
+        <thead>
+            <tr><th>名稱</th><th class="num">長 cm</th><th class="num">寬 cm</th><th class="num">厚 mm</th><th class="num">縫寬 mm</th><th class="num">每箱片數</th><th class="num">每箱單價</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var tile in Project.Tiles)
+            {
+                bool used = Project.Rooms.Any(r => r.TileId == tile.Id);
+                <tr>
+                    <td><input @bind="tile.Name" @bind:after="Changed" /></td>
+                    <td><input type="number" step="0.1" min="1" @bind="tile.LengthCm" @bind:after="Changed" /></td>
+                    <td><input type="number" step="0.1" min="1" @bind="tile.WidthCm" @bind:after="Changed" /></td>
+                    <td><input type="number" step="0.5" min="1" @bind="tile.ThicknessMm" @bind:after="Changed" /></td>
+                    <td><input type="number" step="0.5" min="0" @bind="tile.JointMm" @bind:after="Changed" /></td>
+                    <td><input type="number" step="1" min="1" @bind="tile.PiecesPerBox" @bind:after="Changed" /></td>
+                    <td><input type="number" step="10" min="0" @bind="tile.PricePerBox" @bind:after="Changed" /></td>
+                    <td class="num"><button class="btn small danger" disabled="@used" title="@(used ? "有房間正在使用，不能刪除" : "")" @onclick="() => RemoveTile(tile)">刪除</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+<section class="panel">
+    <h2>單價與材料參數</h2>
+    <div class="fields">
+        <label class="field"><span>工資 正排（元／坪）</span><input type="number" step="100" @bind="P.LaborStraightPerPing" @bind:after="Changed" /></label>
+        <label class="field"><span>工資 交丁（元／坪）</span><input type="number" step="100" @bind="P.LaborRunningBondPerPing" @bind:after="Changed" /></label>
+        <label class="field"><span>工資 斜貼（元／坪）</span><input type="number" step="100" @bind="P.LaborDiagonalPerPing" @bind:after="Changed" /></label>
+        <label class="field"><span>損耗 正排</span><input type="number" step="0.01" min="0" @bind="P.WasteStraight" @bind:after="Changed" /></label>
+        <label class="field"><span>損耗 交丁</span><input type="number" step="0.01" min="0" @bind="P.WasteRunningBond" @bind:after="Changed" /></label>
+        <label class="field"><span>損耗 斜貼</span><input type="number" step="0.01" min="0" @bind="P.WasteDiagonal" @bind:after="Changed" /></label>
+        <label class="field"><span>黏著劑用量（kg／m²）</span><input type="number" step="0.1" min="0" @bind="P.AdhesiveKgPerM2" @bind:after="Changed" /></label>
+        <label class="field"><span>黏著劑每包（kg）</span><input type="number" step="1" min="1" @bind="P.AdhesiveKgPerBag" @bind:after="Changed" /></label>
+        <label class="field"><span>黏著劑每包單價</span><input type="number" step="10" min="0" @bind="P.AdhesivePricePerBag" @bind:after="Changed" /></label>
+        <label class="field"><span>填縫劑密度（kg／m³）</span><input type="number" step="50" min="1" @bind="P.GroutDensityKgPerM3" @bind:after="Changed" /></label>
+        <label class="field"><span>填縫劑每包（kg）</span><input type="number" step="0.5" min="0.1" @bind="P.GroutKgPerBag" @bind:after="Changed" /></label>
+        <label class="field"><span>填縫劑每包單價</span><input type="number" step="10" min="0" @bind="P.GroutPricePerBag" @bind:after="Changed" /></label>
+    </div>
+    <p class="small muted" style="margin-top: 10px">損耗率以小數輸入，0.05 = 5%。各房間可在「磁磚與鋪法」中另外設定。</p>
+</section>
+
+@code {
+    private string? _message;
+    private bool _messageIsError;
+
+    private Project Project => Store.Project;
+    private TilePlan.Core.Quoting.Pricing P => Store.Project.Pricing;
+
+    private void Changed() => Store.NotifyChanged();
+
+    private void AddRoom()
+    {
+        var room = RoomFactory.NewRectangle(Project, $"房間 {Project.Rooms.Count + 1}");
+        Project.Rooms.Add(room);
+        Changed();
+        Nav.NavigateTo($"room/{room.Id}");
+    }
+
+    private void Duplicate(Room room)
+    {
+        var copy = ProjectSerializer.Clone(new Project { Rooms = [room] }).Rooms[0];
+        copy.Id = TileItem.NewId();
+        copy.Name = room.Name + "（複本）";
+        Project.Rooms.Insert(Project.Rooms.IndexOf(room) + 1, copy);
+        Changed();
+    }
+
+    private void RemoveRoom(Room room)
+    {
+        Project.Rooms.Remove(room);
+        Show($"已刪除「{room.Name}」。");
+        Changed();
+    }
+
+    private void AddTile()
+    {
+        Project.Tiles.Add(new TileItem { Name = $"磁磚 {Project.Tiles.Count + 1}" });
+        Changed();
+    }
+
+    private void RemoveTile(TileItem tile)
+    {
+        Project.Tiles.Remove(tile);
+        Changed();
+    }
+
+    private async Task Export()
+    {
+        var name = string.Concat(Project.Name.Split(Path.GetInvalidFileNameChars())).Trim();
+        await (await Js.Module()).InvokeVoidAsync("downloadText", $"{(name.Length > 0 ? name : "tileplan")}.json", ProjectSerializer.Serialize(Project), "application/json");
+        Show("已匯出專案檔。");
+    }
+
+    private async Task Import(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var reader = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024));
+            var project = ProjectSerializer.Deserialize(await reader.ReadToEndAsync());
+            Store.Replace(project);
+            Show($"已匯入「{project.Name}」，共 {project.Rooms.Count} 間房。");
+        }
+        catch (ProjectFormatException ex)
+        {
+            Show(ex.Message, error: true);
+        }
+        catch (IOException ex)
+        {
+            Show($"讀取檔案失敗：{ex.Message}", error: true);
+        }
+    }
+
+    private void LoadSample()
+    {
+        Store.Replace(SampleProject.Load());
+        Show("已載入範例專案（浴室、廚房、L 形客廳）。");
+    }
+
+    private void LoadPerformanceSample()
+    {
+        Store.Replace(SampleProject.Load(SampleProject.Performance));
+        Show("已載入效能測試範例。到房間的「排版結果」按「量測 10 次」即可量測修改縫寬後重新排版與重繪的時間。");
+    }
+
+    private void NewProject()
+    {
+        Store.Replace(new Project());
+        Show("已建立新專案。原本的專案若需要保留，請先匯出 JSON。");
+    }
+
+    private void Show(string message, bool error = false) => (_message, _messageIsError) = (message, error);
+}

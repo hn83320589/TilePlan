@@ -14,6 +14,9 @@ public sealed class ProjectFormatException(string message, Exception? inner = nu
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     UseStringEnumConverter = true)]
 [JsonSerializable(typeof(Project))]
+[JsonSerializable(typeof(Room))]
+[JsonSerializable(typeof(TileItem))]
+[JsonSerializable(typeof(Quoting.Pricing))]
 internal sealed partial class ProjectJsonContext : JsonSerializerContext;
 
 /// <summary>
@@ -52,4 +55,16 @@ public static class ProjectSerializer
     }
 
     public static Project Clone(Project project) => Deserialize(Serialize(project));
+
+    /// <summary>
+    /// 一間房計算結果的快取鍵：房間本身、它用的磁磚與單價設定。任何一項改變，結果就要重算。
+    /// </summary>
+    public static string RoomKey(Project project, Room room)
+    {
+        var compact = new JsonSerializerOptions(Options) { WriteIndented = false };
+        var tile = project.FindTile(room.TileId);
+        return JsonSerializer.Serialize(room, compact.GetTypeInfo(typeof(Room)))
+             + (tile is null ? "" : JsonSerializer.Serialize(tile, compact.GetTypeInfo(typeof(TileItem))))
+             + JsonSerializer.Serialize(project.Pricing, compact.GetTypeInfo(typeof(Quoting.Pricing)));
+    }
 }

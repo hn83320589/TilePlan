@@ -1,0 +1,87 @@
+@page "/room/{Id}"
+@implements IDisposable
+@inject ProjectStore Store
+@inject NavigationManager Nav
+
+@if (_room is null)
+{
+    <h1>找不到這間房間</h1>
+    <p>它可能已經被刪除。<a href="">回到專案</a></p>
+}
+else
+{
+    var result = Store.Result(_room);
+    <PageTitle>@_room.Name — TilePlan</PageTitle>
+    <div class="page-head">
+        <div class="row">
+            <input @bind="_room.Name" @bind:after="Changed" aria-label="房間名稱" style="font-size: var(--step2); font-weight: 600; border-color: transparent; background: transparent; padding-left: 0" />
+            @if (result.Ok) { <AreaText Area="result.Area" /> }
+        </div>
+    </div>
+
+    <div class="steps" role="tablist">
+        @foreach (var (step, title) in Steps)
+        {
+            bool warn = step switch { 1 => result.Polygon is null, 4 => result.Offset is { Satisfied: false }, _ => false };
+            <button role="tab" class="@(_step == step ? "active" : "") @(warn ? "warn" : "")" aria-selected="@(_step == step)" @onclick="() => Go(step)">
+                <span class="n">@step</span>@title
+            </button>
+        }
+    </div>
+
+    @switch (_step)
+    {
+        case 1: <ShapeStep Room="_room" Result="result" OnChanged="Changed" />; break;
+        case 2: <ExclusionStep Room="_room" Result="result" OnChanged="Changed" />; break;
+        case 3: <TileStep Room="_room" Result="result" OnChanged="Changed" />; break;
+        case 4: <LayoutStep Room="_room" Result="result" OnChanged="Changed" OnShowInCutList="ShowInCutList" />; break;
+        case 5: <CutListStep Result="result" Highlight="_highlight" />; break;
+    }
+}
+
+@code {
+    private static readonly (int, string)[] Steps = [(1, "房間形狀"), (2, "不鋪設區"), (3, "磁磚與鋪法"), (4, "排版結果"), (5, "切割清單")];
+
+    [Parameter] public string Id { get; set; } = "";
+
+    private Room? _room;
+    private int _step = 1;
+    private int? _highlight;
+    private string? _loadedId;
+
+    protected override void OnInitialized() => Store.Changed += OnStoreChanged;
+
+    protected override void OnParametersSet()
+    {
+        _room = Store.FindRoom(Id);
+        if (_loadedId != Id)
+        {
+            _loadedId = Id;
+            // 已經畫好形狀的房間直接看排版結果
+            _step = _room is not null && Store.Result(_room).Ok ? 4 : 1;
+            _highlight = null;
+        }
+    }
+
+    private void OnStoreChanged()
+    {
+        _room = Store.FindRoom(Id);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Go(int step)
+    {
+        _step = step;
+        if (step != 5) _highlight = null;
+    }
+
+    private void ShowInCutList(int cutNo)
+    {
+        _highlight = cutNo;
+        _step = 5;
+    }
+
+    private void Changed() => Store.NotifyChanged();
+
+    public void Dispose() => Store.Changed -= OnStoreChanged;
+}

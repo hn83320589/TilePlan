@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# 瀏覽器自動化的暫存截圖
+.playwright-mcp/

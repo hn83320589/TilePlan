@@ -19,10 +19,10 @@ public sealed record OffsetResult(Lattice Lattice, LayoutResult Layout, OffsetRe
 /// </summary>
 public static class OffsetOptimizer
 {
-    private const int CoarseGrid = 8;
-    private const int LineSamples = 48;
-    private const int RefineSamples = 16;
-    private const int MaxRounds = 4;
+    private const int CoarseGrid = 5;
+    private const int LineSamples = 24;
+    private const int RefineSamples = 8;
+    private const int MaxRounds = 3;
 
     public static OffsetResult Optimize(Polygon room, Region region, Lattice template)
     {
@@ -60,15 +60,24 @@ public static class OffsetOptimizer
 
     private sealed class Search(List<Wall> walls, Lattice template)
     {
-        private readonly Dictionary<int, double> _bestSeen = [];
+        // 以牆在 walls 中的位置為索引，評估時不需要配置 Dictionary
+        private readonly double[] _bestSeen = Enumerable.Repeat(double.NegativeInfinity, walls.Count).ToArray();
+        private readonly double[] _widths = new double[walls.Count];
+        private readonly bool[] _skip = new bool[walls.Count];
         private readonly List<(Wall A, Wall B)> _facing = FacingPairs(walls);
-        private HashSet<int>? _infeasible;
+        private readonly List<(int A, int B)> _facingIndex = FacingPairs(walls).Select(p => (walls.IndexOf(p.Item1), walls.IndexOf(p.Item2))).ToList();
+        private readonly Dictionary<(long, long), Candidate> _memo = [];
 
-        public double BestSeen(Wall w) => _bestSeen.TryGetValue(w.Index, out var v) ? v : double.PositiveInfinity;
+        public double BestSeen(Wall w)
+        {
+            double seen = _bestSeen[walls.IndexOf(w)];
+            return double.IsNegativeInfinity(seen) ? double.PositiveInfinity : seen;
+        }
 
         public Candidate Run(HashSet<int>? feasibleOnly, Candidate? start = null)
         {
-            _infeasible = feasibleOnly;
+            for (int k = 0; k < walls.Count; k++) _skip[k] = feasibleOnly?.Contains(walls[k].Index) ?? false;
+            _memo.Clear();
             double mu = template.Mu, mv = template.Mv;
             var best = Eval(0, 0);
             if (start is not null) best = Pick(best, Eval(start.U, start.V));
@@ -77,7 +86,9 @@ public static class OffsetOptimizer
                 for (int b = 0; b < CoarseGrid; b++)
                     best = Pick(best, Eval(mu * a / CoarseGrid, mv * b / CoarseGrid));
 
-            var directions = new List<Vec2> { new(1, 0), new(0, 1) };
+            // 平行於磚縫的牆只受 oᵤ 或 oᵥ 其中一個影響 → 沿座標軸搜尋；斜牆（含 45° 斜貼）則沿對角方向搜尋
+            var directions = new List<Vec2>();
+            if (walls.Any(w => w.Axis != WallAxis.Oblique)) { directions.Add(new(1, 0)); directions.Add(new(0, 1)); }
             if (walls.Any(w => w.Axis == WallAxis.Oblique)) { directions.Add(new(1, 1)); directions.Add(new(1, -1)); }
             var analyticU = AnalyticCandidates(WallAxis.AlongV);
             var analyticV = AnalyticCandidates(WallAxis.AlongU);
@@ -117,8 +128,10 @@ public static class OffsetOptimizer
         {
             u = Lattice.Mod(u, template.Mu);
             v = Lattice.Mod(v, template.Mv);
+            var key = ((long)Math.Round(u * 1e6), (long)Math.Round(v * 1e6));
+            if (_memo.TryGetValue(key, out var cached)) return cached;
+
             var lattice = template.WithOffset(u, v);
-            var widths = new Dictionary<int, double>();
             double shortfall = 0, worstInfeasible = double.PositiveInfinity;
             int straddling = 0;
 
@@ -128,18 +141,19 @@ public static class OffsetOptimizer
                 var metric = EdgeStripEvaluator.Evaluate(w, walls[(k + walls.Count - 1) % walls.Count], walls[(k + 1) % walls.Count], lattice);
                 straddling += metric.Straddling;
                 double width = metric.MinWidth ?? double.PositiveInfinity;
-                widths[w.Index] = Math.Min(width, FullDepth(w));
-                if (!_bestSeen.TryGetValue(w.Index, out var seen) || width > seen) _bestSeen[w.Index] = width;
+                _widths[k] = Math.Min(width, FullDepth(w));
+                if (width > _bestSeen[k]) _bestSeen[k] = width;
 
-                if (_infeasible is not null && _infeasible.Contains(w.Index))
+                if (_skip[k])
                     worstInfeasible = Math.Min(worstInfeasible, width);
                 else
                     shortfall += Math.Max(0, w.Threshold - width);
             }
 
-            double asymmetry = _facing.Sum(p => Math.Abs(widths[p.A.Index] - widths[p.B.Index]));
+            double asymmetry = 0;
+            foreach (var (a, b) in _facingIndex) asymmetry += Math.Abs(_widths[a] - _widths[b]);
             double du = Math.Min(u, template.Mu - u), dv = Math.Min(v, template.Mv - v);
-            return new Candidate(u, v, new Score(shortfall, asymmetry, straddling, worstInfeasible, du + dv));
+            return _memo[key] = new Candidate(u, v, new Score(shortfall, asymmetry, straddling, worstInfeasible, du + dv));
         }
 
         /// <summary>沒有切割片的牆，切條寬度視為一整片磚（用於對稱比較）。</summary>

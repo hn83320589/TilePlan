@@ -25,9 +25,12 @@ public static class OffcutPlanner
     private sealed class Offcut(int stockNo, Region shape)
     {
         public int StockNo { get; } = stockNo;
-        public Region Shape { get; set; } = shape;
-        public Bounds Bounds => Shape.Bounds;
-        public double Area => Shape.Area;
+        public Region Shape { get; } = shape;
+        public Bounds Bounds { get; } = shape.Bounds;
+        public double Area { get; } = shape.Area;
+
+        /// <summary>單一凸多邊形時，可用「頂點都在內」快速判定包含，不必呼叫 Clipper。</summary>
+        public Polygon? Convex { get; } = shape.Polygons.Count == 1 && IsConvex(shape.Polygons[0]) ? shape.Polygons[0] : null;
     }
 
     public static CutPlan Plan(LayoutResult layout, CutSettings settings)
@@ -41,6 +44,8 @@ public static class OffcutPlanner
 
         var cuts = new Dictionary<int, List<CutAssignment>>();
         var offcuts = new List<Offcut>();
+        // 斜貼等情況切割片形狀大量重複：記住「這個形狀放不進這塊餘料」，同形狀的下一片就不必再試
+        var failures = new HashSet<(Offcut, string)>();
         double[] rotations = settings.AllowQuarterTurns ? [0, 90, 180, 270] : [0, 180];
         int stockCount = 0;
 
@@ -48,7 +53,7 @@ public static class OffcutPlanner
         {
             var piece = pieces[k];
             double smallestRemaining = pieces[^1].Area;
-            var fit = settings.ReuseOffcuts ? FindFit(piece, offcuts, rotations, settings.KerfCm) : null;
+            var fit = settings.ReuseOffcuts ? FindFit(piece, offcuts, failures, rotations, settings.KerfCm) : null;
 
             if (fit is not null)
             {
@@ -87,15 +92,22 @@ public static class OffcutPlanner
                 offcuts.Add(new Offcut(stockNo, part));
     }
 
-    private static (Offcut Offcut, Region Placed, double Rotation)? FindFit(Piece piece, List<Offcut> offcuts, double[] rotations, double kerf)
+    private static (Offcut Offcut, Region Placed, double Rotation)? FindFit(
+        Piece piece, List<Offcut> offcuts, HashSet<(Offcut, string)> failures, double[] rotations, double kerf)
     {
         (Offcut, Region, double)? best = null;
         double bestOffcutArea = double.PositiveInfinity, bestLargestLeft = -1;
+        string signature = Signature(piece.LocalShape);
+        double minArea = piece.Area - FitTolerance(piece.LocalShape);
 
-        foreach (var offcut in offcuts)
+        // 由小到大：找到放得進去的最小餘料後，更大的就不必再試
+        foreach (var offcut in offcuts.OrderBy(o => o.Area))
         {
-            if (offcut.Area < piece.Area - FitTolerance(piece.LocalShape) || offcut.Area > bestOffcutArea + 1e-9) continue;
+            if (offcut.Area < minArea) continue;
+            if (offcut.Area > bestOffcutArea + 1e-9) break;
+            if (failures.Contains((offcut, signature))) continue;
             var ob = offcut.Bounds;
+            bool fitsSomewhere = false;
 
             foreach (var rotation in rotations)
             {
@@ -109,7 +121,8 @@ public static class OffcutPlanner
                     if (tb.MinX < ob.MinX - 1e-6 || tb.MinY < ob.MinY - 1e-6 || tb.MaxX > ob.MaxX + 1e-6 || tb.MaxY > ob.MaxY + 1e-6) continue;
 
                     var placed = Translate(rotated, t);
-                    if (PolygonOps.Difference(placed, offcut.Shape).Area > FitTolerance(placed)) continue;
+                    if (!Contains(offcut, placed)) continue;
+                    fitsSomewhere = true;
 
                     double largestLeft = PolygonOps.Components(Subtract(offcut.Shape, placed, kerf)).Select(r => r.Area).DefaultIfEmpty(0).Max();
                     bool better = offcut.Area < bestOffcutArea - 1e-9 || largestLeft > bestLargestLeft + 1e-9;
@@ -121,8 +134,49 @@ public static class OffcutPlanner
                     }
                 }
             }
+            if (!fitsSomewhere) failures.Add((offcut, signature));
         }
         return best;
+    }
+
+    private static bool Contains(Offcut offcut, Region placed)
+    {
+        if (offcut.Convex is { } hull && placed.Polygons.All(p => p.IsCounterClockwise))
+        {
+            // 凸多邊形：所有頂點都在內（容許 1 µm）就代表整片在內
+            const double tolerance = 1 / PolygonOps.Scale;
+            foreach (var poly in placed.Polygons)
+                foreach (var v in poly.Vertices)
+                    for (int i = 0, n = hull.Count; i < n; i++)
+                    {
+                        var a = hull[i];
+                        var b = hull[(i + 1) % n];
+                        if ((b - a).Cross(v - a) < -tolerance * (b - a).Length) return false;
+                    }
+            return true;
+        }
+        return PolygonOps.Difference(placed, offcut.Shape).Area <= FitTolerance(placed);
+    }
+
+    private static bool IsConvex(Polygon p)
+    {
+        if (!p.IsCounterClockwise) return false;
+        for (int i = 0, n = p.Count; i < n; i++)
+        {
+            var a = p[i];
+            var b = p[(i + 1) % n];
+            var c = p[(i + 2) % n];
+            if ((b - a).Cross(c - b) < -1e-9) return false;
+        }
+        return true;
+    }
+
+    /// <summary>形狀的指紋：平移到外框左下角為原點後，頂點座標到 0.01 mm。</summary>
+    private static string Signature(Region shape)
+    {
+        var b = shape.Bounds;
+        return string.Join("|", shape.Polygons.Select(p => string.Join(";", p.Vertices.Select(v =>
+            $"{Math.Round((v.X - b.MinX) * 1000)},{Math.Round((v.Y - b.MinY) * 1000)}"))));
     }
 
     /// <summary>候選平移：切割片外框四角對齊餘料外框四角，以及頂點對頂點。</summary>

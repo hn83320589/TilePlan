@@ -22,6 +22,8 @@ internal static class EdgeStripEvaluator
         double? min = null, cornerMin = null;
         int straddling = 0;
         double lo = Math.Min(a.Y, b.Y), hi = Math.Max(a.Y, b.Y);
+        // 只有靠近牆兩端的磚可能同時跨過相鄰的牆（轉角片）；牆中段不必檢查
+        double cornerReach = lattice.TileU + lattice.TileV;
 
         for (int j = lattice.RowOf(lo - Eps); j <= lattice.RowOf(hi + Eps); j++)
         {
@@ -33,7 +35,9 @@ internal static class EdgeStripEvaluator
                 double? depth = StraddleDepth(wall, o, lattice.TileU, lattice.TileV);
                 if (depth is null) continue;
                 straddling++;
-                if (IsCorner(wall, previous, o, lattice) || IsCorner(wall, next, o, lattice))
+                double along = (o + new Vec2(lattice.TileU / 2, lattice.TileV / 2) - a).Dot(wall.LatticeDir);
+                bool nearEnd = along < cornerReach || along > wall.Length - cornerReach;
+                if (nearEnd && (IsCorner(wall, previous, o, lattice) || IsCorner(wall, next, o, lattice)))
                 {
                     if (cornerMin is null || depth < cornerMin) cornerMin = depth;
                     continue;

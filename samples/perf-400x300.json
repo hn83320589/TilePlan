@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "name": "效能量測 400×300 小磚",
+  "client": "",
+  "tiles": [
+    {
+      "id": "mosaic",
+      "name": "小磚 10×10",
+      "lengthCm": 10,
+      "widthCm": 10,
+      "thicknessMm": 6,
+      "jointMm": 2,
+      "piecesPerBox": 100,
+      "pricePerBox": 800
+    }
+  ],
+  "pricing": {
+    "adhesiveKgPerM2": 5,
+    "adhesiveKgPerBag": 20,
+    "adhesivePricePerBag": 280,
+    "groutDensityKgPerM3": 1600,
+    "groutKgPerBag": 2,
+    "groutPricePerBag": 150,
+    "laborStraightPerPing": 3500,
+    "laborRunningBondPerPing": 3800,
+    "laborDiagonalPerPing": 4500,
+    "wasteStraight": 0.05,
+    "wasteRunningBond": 0.05,
+    "wasteDiagonal": 0.1
+  },
+  "rooms": [
+    {
+      "id": "perf",
+      "name": "400×300 房間",
+      "shape": {
+        "kind": "polygon",
+        "vertices": [
+          {
+            "x": 0,
+            "y": 0
+          },
+          {
+            "x": 400,
+            "y": 0
+          },
+          {
+            "x": 400,
+            "y": 300
+          },
+          {
+            "x": 0,
+            "y": 300
+          }
+        ],
+        "walls": [],
+        "diagonals": [],
+        "clockwise": false
+      },
+      "exclusions": [],
+      "tileId": "mosaic",
+      "pattern": "straight",
+      "bond": "half",
+      "longSideAlongBaseline": true,
+      "baselineOrigin": {
+        "x": 200,
+        "y": 0
+      },
+      "baselineAngleDeg": 0,
+      "offsetMode": "auto",
+      "offsetU": 0,
+      "offsetV": 0,
+      "reuseOffcuts": true,
+      "allowQuarterTurns": false,
+      "kerfMm": 0,
+      "wasteRateOverride": null
+    }
+  ]
+}

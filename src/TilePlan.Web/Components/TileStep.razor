@@ -1,0 +1,134 @@
+@using TilePlan.Core.Survey
+@using TilePlan.Core.Tiles
+@inject ProjectStore Store
+
+<div class="columns">
+    <div>
+        <div class="panel">
+            <h3>磁磚</h3>
+            <div class="row">
+                <select @bind="Room.TileId" @bind:after="Commit" aria-label="磁磚">
+                    @if (Store.Project.FindTile(Room.TileId) is null) { <option value="">請選擇</option> }
+                    @foreach (var t in Store.Project.Tiles) { <option value="@t.Id">@t.Name</option> }
+                </select>
+                @if (Tile is not null)
+                {
+                    <span class="muted small num">@Fmt.Cm(Tile.LengthCm) × @Fmt.Cm(Tile.WidthCm) cm，厚 @Fmt.Cm(Tile.ThicknessMm) mm，縫 @Fmt.Cm(Tile.JointMm) mm，每箱 @Tile.PiecesPerBox 片</span>
+                }
+            </div>
+            <p class="small muted" style="margin-top: 8px">磁磚規格在「專案與單價」頁編輯，同一種磁磚可用在多間房。</p>
+        </div>
+
+        <div class="panel">
+            <h3>鋪法</h3>
+            <div class="row">
+                <div class="segmented" role="group" aria-label="鋪法">
+                    <button class="@(Room.Pattern == PatternKind.Straight ? "active" : "")" @onclick="() => SetPattern(PatternKind.Straight)">正排</button>
+                    <button class="@(Room.Pattern == PatternKind.RunningBond ? "active" : "")" @onclick="() => SetPattern(PatternKind.RunningBond)">交丁</button>
+                    <button class="@(Room.Pattern == PatternKind.Diagonal ? "active" : "")" @onclick="() => SetPattern(PatternKind.Diagonal)">45° 斜貼</button>
+                </div>
+                @if (Room.Pattern == PatternKind.RunningBond)
+                {
+                    <div class="segmented" role="group" aria-label="錯縫比例">
+                        <button class="@(Room.Bond == BondRatio.Half ? "active" : "")" @onclick="() => SetBond(BondRatio.Half)">錯縫 1/2</button>
+                        <button class="@(Room.Bond == BondRatio.Third ? "active" : "")" @onclick="() => SetBond(BondRatio.Third)">錯縫 1/3</button>
+                    </div>
+                }
+            </div>
+            <label class="check" style="margin-top: 10px"><input type="checkbox" @bind="Room.LongSideAlongBaseline" @bind:after="Commit" />磚的長邊沿基準線方向</label>
+        </div>
+
+        <div class="panel">
+            <h3>排版基準線</h3>
+            <p class="small muted">磚縫的方向依基準線決定，例如門口中線。點下方的牆名，可直接以該牆中點為起點、垂直該牆進入房間。</p>
+            <div class="fields">
+                <label class="field"><span>起點 X（cm）</span><input type="number" step="1" @bind="Room.BaselineOrigin.X" @bind:after="Commit" /></label>
+                <label class="field"><span>起點 Y（cm）</span><input type="number" step="1" @bind="Room.BaselineOrigin.Y" @bind:after="Commit" /></label>
+                <label class="field"><span>方向（度，0° = 向右）</span><input type="number" step="1" @bind="Room.BaselineAngleDeg" @bind:after="Commit" /></label>
+            </div>
+            @if (Result.Polygon is { } poly)
+            {
+                <div class="row" style="margin-top: 10px">
+                    @for (int i = 0; i < poly.Count; i++)
+                    {
+                        int index = i;
+                        <button class="btn small" @onclick="() => FromWall(index)">@SurveySolver.LabelPair(i, (i + 1) % poly.Count) 中點</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div>
+        <div class="panel">
+            <h3>起始偏移</h3>
+            <div class="segmented" role="group" aria-label="偏移模式">
+                <button class="@(Room.OffsetMode == OffsetMode.Auto ? "active" : "")" @onclick="() => SetMode(OffsetMode.Auto)">自動調整</button>
+                <button class="@(Room.OffsetMode == OffsetMode.Manual ? "active" : "")" @onclick="() => SetMode(OffsetMode.Manual)">手動</button>
+            </div>
+            @if (Room.OffsetMode == OffsetMode.Auto)
+            {
+                <p class="small muted" style="margin-top: 8px">讓牆邊切條盡量左右對稱，且不小於磚寬的 1/3。</p>
+                @if (Result.Offset is { } report)
+                {
+                    <p class="small num">目前偏移：沿基準線 @Fmt.Cm(report.OffsetU) cm、垂直 @Fmt.Cm(report.OffsetV) cm
+                        <button class="btn small" @onclick="LockOffset">改成手動並保留</button></p>
+                }
+            }
+            else
+            {
+                <div class="fields" style="margin-top: 10px">
+                    <label class="field"><span>沿基準線（cm）</span><input type="number" step="0.1" @bind="Room.OffsetU" @bind:after="Commit" /></label>
+                    <label class="field"><span>垂直基準線（cm）</span><input type="number" step="0.1" @bind="Room.OffsetV" @bind:after="Commit" /></label>
+                </div>
+            }
+        </div>
+
+        <div class="panel">
+            <h3>切割與損耗</h3>
+            <label class="check"><input type="checkbox" @bind="Room.ReuseOffcuts" @bind:after="Commit" />用切剩的餘料做其他切割片</label>
+            <label class="check"><input type="checkbox" @bind="Room.AllowQuarterTurns" @bind:after="Commit" />餘料可轉 90°（有紋路的磚請勿勾選）</label>
+            <div class="fields" style="margin-top: 10px">
+                <label class="field"><span>刀口寬（mm）</span><input type="number" step="0.5" min="0" @bind="Room.KerfMm" @bind:after="Commit" /></label>
+                <label class="field">
+                    <span>損耗率（預設 @Fmt.Percent(Store.Project.Pricing.DefaultWasteRate(Room.Pattern))）</span>
+                    <input type="number" step="0.01" min="0" placeholder="依鋪法" @bind="Room.WasteRateOverride" @bind:after="Commit" />
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Room Room { get; set; } = default!;
+    [Parameter, EditorRequired] public RoomResult Result { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private TileItem? Tile => Store.Project.FindTile(Room.TileId);
+
+    private Task Commit() => OnChanged.InvokeAsync();
+
+    private Task SetPattern(PatternKind kind) { Room.Pattern = kind; return Commit(); }
+    private Task SetBond(BondRatio bond) { Room.Bond = bond; return Commit(); }
+    private Task SetMode(OffsetMode mode) { Room.OffsetMode = mode; return Commit(); }
+
+    private Task LockOffset()
+    {
+        if (Result.Offset is { } r) (Room.OffsetU, Room.OffsetV) = (Math.Round(r.OffsetU, 2), Math.Round(r.OffsetV, 2));
+        Room.OffsetMode = OffsetMode.Manual;
+        return Commit();
+    }
+
+    /// <summary>以牆的中點為起點，方向垂直於牆、指向房間內（門口中線的典型設定）。</summary>
+    private Task FromWall(int i)
+    {
+        var poly = Result.Polygon!;
+        var a = poly[i];
+        var b = poly[(i + 1) % poly.Count];
+        var mid = (a + b) / 2;
+        var inward = poly.IsCounterClockwise ? (b - a).Perp() : -(b - a).Perp();
+        Room.BaselineOrigin = new Point2(Math.Round(mid.X, 1), Math.Round(mid.Y, 1));
+        Room.BaselineAngleDeg = Math.Round(Math.Atan2(inward.Y, inward.X) * 180 / Math.PI, 2);
+        return Commit();
+    }
+}

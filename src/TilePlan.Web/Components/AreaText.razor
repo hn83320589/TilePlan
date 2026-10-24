@@ -1,0 +1,7 @@
+@using TilePlan.Core.Geometry
+@using TilePlan.Web.Rendering
+<span class="area-text"><span class="m2">@Fmt.D2(Area.M2Rounded) m²</span><span class="ping">@Fmt.D2(Area.PingRounded) 坪</span></span>
+
+@code {
+    [Parameter, EditorRequired] public Area Area { get; set; }
+}

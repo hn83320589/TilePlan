@@ -1,0 +1,118 @@
+@page "/quote"
+@inject ProjectStore Store
+@inject TilePlanJs Js
+
+<PageTitle>報價單 — @Store.Project.Name</PageTitle>
+
+@{
+    var quote = Store.Quote();
+    var failed = Store.Project.Rooms.Select(r => Store.Result(r)).Where(r => !r.Ok).ToList();
+}
+
+<div class="page-head no-print">
+    <h1>報價單</h1>
+    <button class="btn primary" @onclick="Print">列印／存成 PDF</button>
+</div>
+
+@if (failed.Count > 0)
+{
+    <div class="notice warn no-print">
+        <p>以下房間資料不完整，沒有列入報價：</p>
+        <ul>@foreach (var r in failed) { <li><a href="@($"room/{r.Room.Id}")">@r.Room.Name</a>：@r.Error</li> }</ul>
+    </div>
+}
+
+<article class="quote-sheet">
+    <header>
+        <div>
+            <h1>報價單</h1>
+            <div>@Store.Project.Name</div>
+        </div>
+        <div style="text-align: right">
+            @if (!string.IsNullOrWhiteSpace(Store.Project.Client)) { <div>業主：@Store.Project.Client</div> }
+            <div class="num">日期：@DateTime.Today.ToString("yyyy-MM-dd")</div>
+        </div>
+    </header>
+
+    <h2>各房間明細</h2>
+    <table class="grid">
+        <thead>
+            <tr>
+                <th>房間</th><th class="num">面積 m²</th><th class="num">坪</th><th>磁磚／鋪法</th>
+                <th class="num">片數</th><th class="num">黏著劑 kg</th><th class="num">填縫劑 kg</th>
+                <th class="num">工資單價</th><th class="num">工資</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in quote.Rooms)
+            {
+                <tr>
+                    <td>@r.RoomName</td>
+                    <td class="num">@Fmt.D2(r.AreaM2)</td>
+                    <td class="num">@Fmt.D2(r.AreaPing)</td>
+                    <td>@r.TileName<br /><span class="muted small">@r.PatternName</span></td>
+                    <td class="num">@r.TilesWithWaste</td>
+                    <td class="num">@Fmt.Kg(r.AdhesiveKg)</td>
+                    <td class="num">@Fmt.Kg(r.GroutKg)</td>
+                    <td class="num">@Fmt.Money(r.LaborPerPing)／坪</td>
+                    <td class="num">@Fmt.Money(r.Labor)</td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td>合計</td>
+                <td class="num">@Fmt.D2(quote.TotalAreaM2)</td>
+                <td class="num">@Fmt.D2(quote.TotalAreaPing)</td>
+                <td></td><td></td><td></td><td></td><td></td>
+                <td class="num">@Fmt.Money(quote.LaborTotal)</td>
+            </tr>
+        </tfoot>
+    </table>
+    <p class="small muted" style="margin-top: 4px">片數已含損耗並無條件進位；工資 = 坪數（小數兩位）× 每坪單價。</p>
+
+    <h2>材料費</h2>
+    <table class="grid">
+        <thead><tr><th>品項</th><th class="num">用量</th><th class="num">叫貨數量</th><th class="num">單價</th><th class="num">金額</th></tr></thead>
+        <tbody>
+            @foreach (var t in quote.Tiles)
+            {
+                <tr>
+                    <td>@t.TileName</td>
+                    <td class="num">@t.Pieces 片</td>
+                    <td class="num">@t.Boxes 箱（每箱 @t.PiecesPerBox 片）</td>
+                    <td class="num">@Fmt.Money(t.PricePerBox)／箱</td>
+                    <td class="num">@Fmt.Money(t.Amount)</td>
+                </tr>
+            }
+            @foreach (var c in quote.Consumables)
+            {
+                <tr>
+                    <td>@c.Name</td>
+                    <td class="num">@Fmt.Kg(c.Kg) kg</td>
+                    <td class="num">@c.Bags 包（每包 @Fmt.Cm(c.KgPerBag) kg）</td>
+                    <td class="num">@Fmt.Money(c.PricePerBag)／包</td>
+                    <td class="num">@Fmt.Money(c.Amount)</td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr><td colspan="4">材料費小計</td><td class="num">@Fmt.Money(quote.MaterialTotal)</td></tr>
+        </tfoot>
+    </table>
+    <p class="small muted" style="margin-top: 4px">同一種磁磚合併各房間片數後再換算箱數，一次叫貨，批號顏色一致。</p>
+
+    <div class="total">
+        <span>材料費 <span class="num">@Fmt.Money(quote.MaterialTotal)</span></span>
+        <span>工資 <span class="num">@Fmt.Money(quote.LaborTotal)</span></span>
+        <span>總計 <strong class="num">NT$ @Fmt.Money(quote.GrandTotal)</strong></span>
+    </div>
+
+    <footer>
+        <p>本報價依現場量測計算，只包含地坪鋪設，不含壁磚、轉角收邊、拆除與防水工程。</p>
+    </footer>
+</article>
+
+@code {
+    private async Task Print() => await (await Js.Module()).InvokeVoidAsync("printPage");
+}

@@ -14,6 +14,15 @@ public sealed record LayoutResult(
     public int CutCount => Pieces.Count(p => p.Kind == PieceKind.Cut);
     public double PieceArea => Pieces.Sum(p => p.Area);
     public IEnumerable<Piece> CutPieces => Pieces.Where(p => p.Kind == PieceKind.Cut);
+
+    /// <summary>給人看的排、欄編號：從房間內最靠近基準線起點的那一排、那一欄算起，以 1 起算。</summary>
+    public (int Row, int Column) DisplayIndex(Piece piece)
+    {
+        if (Pieces.Count == 0) return (1, 1);
+        int minJ = Pieces.Min(p => p.J);
+        int minI = Pieces.Where(p => p.J == piece.J).Min(p => p.I);
+        return (piece.J - minJ + 1, piece.I - minI + 1);
+    }
 }
 
 /// <summary>

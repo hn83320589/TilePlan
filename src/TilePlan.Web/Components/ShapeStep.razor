@@ -1,0 +1,262 @@
+@using TilePlan.Core.Geometry
+@using TilePlan.Core.Survey
+
+<div class="row" style="margin-bottom: 12px">
+    <div class="segmented" role="group" aria-label="輸入方式">
+        <button class="@(Shape.Kind == ShapeKind.Polygon ? "active" : "")" @onclick="() => SetKind(ShapeKind.Polygon)">在畫布上畫</button>
+        <button class="@(Shape.Kind == ShapeKind.Survey ? "active" : "")" @onclick="() => SetKind(ShapeKind.Survey)">輸入現場實測</button>
+    </div>
+    <span class="muted small">@(Shape.Kind == ShapeKind.Polygon ? "點選畫布加頂點、拖曳頂點調整；座標單位為公分。" : "依序輸入每面牆長與量到的對角線，系統會推算房間形狀。")</span>
+</div>
+
+<div class="columns">
+    <div>
+        <Canvas View="_view" CssClass="@(_adding ? "adding" : "")" OnClick="OnCanvasClick" OnDrag="OnDrag" OnDrop="OnDrop"
+                Hint="@(Shape.Kind == ShapeKind.Polygon ? (_adding ? $"加點模式：點選畫布新增頂點（吸附 {_snap} cm）" : "滾輪縮放、拖曳空白處平移") : "實測推算結果預覽")">
+            <Tools>
+                @if (Shape.Kind == ShapeKind.Polygon)
+                {
+                    <button class="btn small @(_adding ? "primary" : "")" @onclick="() => _adding = !_adding">@(_adding ? "完成加點" : "加點")</button>
+                    <select class="small" @bind="_snap" title="吸附格距">
+                        <option value="1">吸附 1 cm</option>
+                        <option value="5">吸附 5 cm</option>
+                        <option value="10">吸附 10 cm</option>
+                    </select>
+                }
+            </Tools>
+            <ChildContent>
+                @foreach (var x in GridLines(_view.MinX, _view.MaxX))
+                {
+                    <line class="svg-grid" x1="@Svg.N(x)" y1="@Svg.N(_view.MinY - Pad)" x2="@Svg.N(x)" y2="@Svg.N(_view.MaxY + Pad)"></line>
+                }
+                @foreach (var y in GridLines(_view.MinY, _view.MaxY))
+                {
+                    <line class="svg-grid" x1="@Svg.N(_view.MinX - Pad)" y1="@Svg.N(y)" x2="@Svg.N(_view.MaxX + Pad)" y2="@Svg.N(y)"></line>
+                }
+                @if (Points.Count >= 2)
+                {
+                    <polygon class="svg-room-draft" points="@Svg.Points(Points)"></polygon>
+                }
+                @foreach (var ex in Room.Exclusions.Where(e => e.Vertices.Count >= 3))
+                {
+                    <polygon class="svg-excl" points="@Svg.Points(ex.Vertices.Select(v => v.ToVec()))"></polygon>
+                }
+                @if (Shape.Kind == ShapeKind.Survey && Points.Count >= 3)
+                {
+                    @foreach (var d in Shape.Diagonals.Where(d => d.From < Points.Count && d.To < Points.Count))
+                    {
+                        <line class="svg-diag" x1="@Svg.N(Points[d.From].X)" y1="@Svg.N(Points[d.From].Y)" x2="@Svg.N(Points[d.To].X)" y2="@Svg.N(Points[d.To].Y)"></line>
+                    }
+                }
+                @for (int i = 0; i < Points.Count && Points.Count >= 2; i++)
+                {
+                    var a = Points[i];
+                    var b = Points[(i + 1) % Points.Count];
+                    if (Points.Count == 2 && i == 1) break;
+                    var mid = (a + b) / 2;
+                    <SvgText X="mid.X" Y="mid.Y" Size="LabelSize" CssClass="svg-dim">@Fmt.Cm(a.DistanceTo(b))</SvgText>
+                }
+                @for (int i = 0; i < Points.Count; i++)
+                {
+                    var p = Points[i];
+                    var offset = LabelOffset(i);
+                    // ChildContent 會延後執行：迴圈變數要先複製，否則每個標籤都會讀到迴圈結束時的 i
+                    var label = SurveySolver.Label(i);
+                    <SvgText X="p.X + offset.X" Y="p.Y + offset.Y" Size="LabelSize * 1.1">@label</SvgText>
+                    @if (Shape.Kind == ShapeKind.Polygon)
+                    {
+                        <circle class="svg-handle" data-handle="@($"v{i}")" cx="@Svg.N(p.X)" cy="@Svg.N(p.Y)" r="@Svg.N(HandleRadius)"></circle>
+                    }
+                }
+            </ChildContent>
+        </Canvas>
+    </div>
+
+    <div>
+        @if (Result.Ok)
+        {
+            <div class="panel">
+                <h3>面積</h3>
+                <AreaText Area="Area.FromCm2(Result.Polygon!.Area)" />
+                @if (Room.Exclusions.Count > 0)
+                {
+                    <p class="small muted" style="margin: 6px 0 0">扣除不鋪設區後 <AreaText Area="Result.Area" /></p>
+                }
+            </div>
+        }
+        else if (Result.Error is not null && Shape.Kind == ShapeKind.Polygon)
+        {
+            <div class="notice warn"><p>@Result.Error</p></div>
+        }
+
+        @if (Shape.Kind == ShapeKind.Polygon)
+        {
+            <div class="panel">
+                <div class="row"><h3>頂點座標</h3><span class="spacer"></span><button class="btn small" @onclick="AddVertex">新增</button></div>
+                <table class="grid">
+                    <thead><tr><th></th><th class="num">X</th><th class="num">Y</th><th></th></tr></thead>
+                    <tbody>
+                        @for (int i = 0; i < Shape.Vertices.Count; i++)
+                        {
+                            var v = Shape.Vertices[i];
+                            int index = i;
+                            <tr>
+                                <td>@SurveySolver.Label(i)</td>
+                                <td><input type="number" step="0.1" @bind="v.X" @bind:after="Commit" /></td>
+                                <td><input type="number" step="0.1" @bind="v.Y" @bind:after="Commit" /></td>
+                                <td><button class="btn small danger" title="刪除頂點" @onclick="() => RemoveVertex(index)">✕</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="row" style="margin-top: 10px">
+                    <span class="small muted">長方形</span>
+                    <input class="narrow" type="number" step="1" @bind="_rectW" aria-label="寬" /> ×
+                    <input class="narrow" type="number" step="1" @bind="_rectH" aria-label="深" />
+                    <button class="btn small" @onclick="UseRectangle">套用</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <SurveyForm Room="Room" Result="Result" OnChanged="CommitSurvey" OnConvert="ConvertToPolygon" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Room Room { get; set; } = default!;
+    [Parameter, EditorRequired] public RoomResult Result { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private Bounds _view;
+    private string? _viewFor;
+    private bool _adding;
+    private int _snap = 5;
+    private double _rectW = 300, _rectH = 200;
+
+    private RoomShape Shape => Room.Shape;
+
+    /// <summary>畫面上的頂點：座標模式直接用輸入；實測模式用推算結果。</summary>
+    private List<Vec2> Points => Shape.Kind == ShapeKind.Polygon
+        ? Shape.Vertices.Select(v => v.ToVec()).ToList()
+        : Result.Polygon?.Vertices.ToList() ?? [];
+
+    private double Size => Math.Max(Math.Max(_view.Width, _view.Height), 50);
+    private double HandleRadius => Size / 90;
+    private double LabelSize => Size / 40;
+    private double Pad => Size;
+
+    protected override void OnParametersSet()
+    {
+        // 換房間或換輸入方式時才重新縮放；拖曳頂點時畫面不跟著跳
+        string key = $"{Room.Id}:{Shape.Kind}:{Points.Count >= 3}";
+        if (_viewFor != key) { _viewFor = key; Refit(); }
+    }
+
+    private void Refit()
+    {
+        var pts = Points;
+        _view = pts.Count >= 2 ? Bounds.Of(pts) : new Bounds(0, 0, 300, 200);
+        if (_view.Width < 1 || _view.Height < 1) _view = new Bounds(_view.MinX - 100, _view.MinY - 100, _view.MaxX + 100, _view.MaxY + 100);
+    }
+
+    private IEnumerable<double> GridLines(double min, double max)
+    {
+        double step = Size > 1500 ? 100 : 50;
+        for (double v = Math.Floor((min - Pad) / step) * step; v <= max + Pad; v += step) yield return v;
+    }
+
+    private Vec2 LabelOffset(int i)
+    {
+        var pts = Points;
+        if (pts.Count < 3) return new Vec2(0, LabelSize * 1.4);
+        // 標籤放在角的外側
+        var p = pts[i];
+        var bisector = ((p - pts[(i + pts.Count - 1) % pts.Count]).Normalized() + (p - pts[(i + 1) % pts.Count]).Normalized());
+        if (bisector.Length < 1e-6) bisector = (pts[(i + 1) % pts.Count] - p).Perp();
+        return bisector.Normalized() * LabelSize * 1.6;
+    }
+
+    private double Snap(double v) => Math.Round(v / _snap) * _snap;
+
+    private async Task OnCanvasClick((double X, double Y, string? Handle) e)
+    {
+        if (Shape.Kind != ShapeKind.Polygon || !_adding || e.Handle is not null) return;
+        Shape.Vertices.Add(new Point2(Snap(e.X), Snap(e.Y)));
+        await Commit();
+    }
+
+    private void OnDrag((string Handle, double X, double Y) e)
+    {
+        if (!TryVertex(e.Handle, out var v)) return;
+        v.X = Snap(e.X);
+        v.Y = Snap(e.Y);
+        StateHasChanged();
+    }
+
+    private async Task OnDrop((string Handle, double X, double Y) e)
+    {
+        OnDrag(e);
+        await Commit();
+    }
+
+    private bool TryVertex(string handle, out Point2 vertex)
+    {
+        vertex = default!;
+        if (!handle.StartsWith('v') || !int.TryParse(handle[1..], out int i) || i >= Shape.Vertices.Count) return false;
+        vertex = Shape.Vertices[i];
+        return true;
+    }
+
+    private async Task AddVertex()
+    {
+        var last = Shape.Vertices.LastOrDefault();
+        Shape.Vertices.Add(last is null ? new Point2(0, 0) : new Point2(last.X + 50, last.Y));
+        await Commit();
+    }
+
+    private async Task RemoveVertex(int index)
+    {
+        Shape.Vertices.RemoveAt(index);
+        await Commit();
+    }
+
+    private async Task UseRectangle()
+    {
+        if (_rectW <= 0 || _rectH <= 0) return;
+        Shape.Vertices = [new(0, 0), new(_rectW, 0), new(_rectW, _rectH), new(0, _rectH)];
+        await Commit();
+        Refit();
+    }
+
+    private async Task SetKind(ShapeKind kind)
+    {
+        if (Shape.Kind == kind) return;
+        if (kind == ShapeKind.Survey && Shape.Walls.Count == 0 && Shape.Vertices.Count >= 3)
+        {
+            // 從目前的形狀帶入牆長，方便直接改成實測值
+            var pts = Shape.Vertices.Select(v => v.ToVec()).ToList();
+            Shape.Walls = pts.Select((p, i) => Math.Round(p.DistanceTo(pts[(i + 1) % pts.Count]), 1)).ToList();
+        }
+        Shape.Kind = kind;
+        _adding = false;
+        await Commit();
+    }
+
+    private async Task CommitSurvey()
+    {
+        await Commit();
+        if (Result.Polygon is not null && _view.Width < 1) Refit();
+    }
+
+    private async Task ConvertToPolygon()
+    {
+        if (Result.Polygon is null) return;
+        Shape.Vertices = Result.Polygon.Vertices.Select(v => new Point2(Math.Round(v.X, 1), Math.Round(v.Y, 1))).ToList();
+        Shape.Kind = ShapeKind.Polygon;
+        await Commit();
+    }
+
+    private Task Commit() => OnChanged.InvokeAsync();
+}

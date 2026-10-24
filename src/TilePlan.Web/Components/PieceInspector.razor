@@ -1,0 +1,51 @@
+@using TilePlan.Core.Cutting
+@using TilePlan.Core.Layout
+@using TilePlan.Core.Tiles
+
+<div class="panel">
+    <h3>@(Piece.Kind == PieceKind.Full ? "整片磚" : $"切割片 {Piece.Label}")</h3>
+    <dl class="stats">
+        <dt>位置</dt><dd class="small">第 @Position.Row 排、第 @Position.Column 欄</dd>
+        <dt>@(Piece.Kind == PieceKind.Full ? "尺寸" : "切後外框")</dt>
+        <dd>@Fmt.Cm(Piece.LocalBounds.Width) × @Fmt.Cm(Piece.LocalBounds.Height) cm</dd>
+        <dt>面積</dt><dd>@Fmt.Cm2(Piece.Area) cm²</dd>
+        @if (Assignment is { } a)
+        {
+            <dt>切割清單</dt>
+            <dd>
+                <button class="btn small" @onclick="() => OnShowInCutList.InvokeAsync(Piece.CutNo)">原磚 S@(a.StockNo.ToString("00"))</button>
+                <span class="small muted">@(a.FromOffcut ? "使用餘料" : "新開一片")@(a.RotationDeg != 0 ? $"，轉 {a.RotationDeg:0}°" : "")</span>
+            </dd>
+        }
+    </dl>
+    @if (Piece.Kind == PieceKind.Cut)
+    {
+        <svg viewBox="@($"{Svg.N(-2)} {Svg.N(-Lattice.TileV - 2)} {Svg.N(Lattice.TileU + 4)} {Svg.N(Lattice.TileV + 4)}")" style="width: 100%; height: auto; margin-top: 8px; background: var(--grout)">
+            <g transform="scale(1,-1)">
+                <rect x="0" y="0" width="@Svg.N(Lattice.TileU)" height="@Svg.N(Lattice.TileV)" fill="white" stroke="var(--muted)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"></rect>
+                <path class="svg-cut" d="@Svg.Path(Piece.LocalShape)"></path>
+                @foreach (var poly in Piece.LocalShape.Polygons)
+                {
+                    @foreach (var (p, q) in poly.Edges())
+                    {
+                        var len = p.DistanceTo(q);
+                        if (len < Lattice.TileU / 12) continue;
+                        var mid = (p + q) / 2;
+                        <SvgText X="mid.X" Y="mid.Y" Size="Math.Max(Lattice.TileU, Lattice.TileV) / 14" CssClass="svg-dim">@Fmt.Cm(len)</SvgText>
+                    }
+                }
+            </g>
+        </svg>
+        <p class="small muted" style="margin: 4px 0 0">虛線為整片原磚 @Fmt.Cm(Lattice.TileU) × @Fmt.Cm(Lattice.TileV) cm，黃色為要留下的部分（各邊長單位 cm）。</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Piece Piece { get; set; } = default!;
+    [Parameter] public CutAssignment? Assignment { get; set; }
+    [Parameter, EditorRequired] public LayoutResult Layout { get; set; } = default!;
+
+    private Lattice Lattice => Layout.Lattice;
+    private (int Row, int Column) Position => Layout.DisplayIndex(Piece);
+    [Parameter] public EventCallback<int> OnShowInCutList { get; set; }
+}

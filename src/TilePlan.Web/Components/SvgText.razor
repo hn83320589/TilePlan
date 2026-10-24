@@ -1,0 +1,13 @@
+@using TilePlan.Web.Rendering
+@* 在 y 軸向上的世界座標中放置文字：再翻轉一次，文字才不會倒過來。Size 以 cm 為單位。 *@
+<text class="@CssClass" transform="scale(1,-1)" x="@Svg.N(X)" y="@Svg.N(-Y)" font-size="@Svg.N(Size)"
+      text-anchor="@Anchor" dominant-baseline="middle">@ChildContent</text>
+
+@code {
+    [Parameter] public double X { get; set; }
+    [Parameter] public double Y { get; set; }
+    [Parameter] public double Size { get; set; } = 10;
+    [Parameter] public string Anchor { get; set; } = "middle";
+    [Parameter] public string? CssClass { get; set; } = "svg-label";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

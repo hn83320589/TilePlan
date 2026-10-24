@@ -1,0 +1,77 @@
+@using TilePlan.Core.Geometry
+@implements IAsyncDisposable
+@inject TilePlanJs Js
+
+@* 可平移縮放的 SVG 畫布：內容使用世界座標（cm，y 軸向上）。 *@
+<div class="canvas-wrap">
+    <svg @ref="_svg" class="canvas @CssClass" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+        <defs>
+            <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="8" height="8" fill="#f1f3f3"></rect>
+                <line x1="0" y1="0" x2="0" y2="8" stroke="#aab4b8" stroke-width="2"></line>
+            </pattern>
+        </defs>
+        <g data-world transform="scale(1,-1)">
+            @ChildContent
+        </g>
+    </svg>
+    <div class="canvas-tools no-print">
+        @Tools
+        <button class="btn small" @onclick="FitAsync" title="縮放到整個房間">全圖</button>
+    </div>
+    @if (Hint is not null)
+    {
+        <div class="canvas-hint">@Hint</div>
+    }
+</div>
+
+@code {
+    private ElementReference _svg;
+    private DotNetObjectReference<Canvas>? _ref;
+    private Bounds? _fitted;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Tools { get; set; }
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>要顯示的範圍；範圍改變時（例如換房間）自動重新縮放。</summary>
+    [Parameter] public Bounds View { get; set; }
+
+    /// <summary>點擊（沒有拖曳）時的世界座標；第三個參數是點到的 data-handle（可能為 null）。</summary>
+    [Parameter] public EventCallback<(double X, double Y, string? Handle)> OnClick { get; set; }
+    [Parameter] public EventCallback<(string Handle, double X, double Y)> OnDrag { get; set; }
+    [Parameter] public EventCallback<(string Handle, double X, double Y)> OnDrop { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var module = await Js.Module();
+        if (firstRender)
+        {
+            _ref = DotNetObjectReference.Create(this);
+            await module.InvokeVoidAsync("initCanvas", _svg, _ref);
+        }
+        if (_fitted != View && View.Width > 0)
+        {
+            _fitted = View;
+            await FitAsync();
+        }
+    }
+
+    public async Task FitAsync()
+    {
+        var m = Math.Max(View.Width, View.Height) * 0.06;
+        await (await Js.Module()).InvokeVoidAsync("fitView", _svg, View.MinX, View.MinY, View.MaxX, View.MaxY, m);
+    }
+
+    [JSInvokable] public Task OnCanvasClick(double x, double y, string? handle) => OnClick.InvokeAsync((x, y, handle));
+    [JSInvokable] public Task OnHandleDrag(string handle, double x, double y) => OnDrag.InvokeAsync((handle, x, y));
+    [JSInvokable] public Task OnHandleDrop(string handle, double x, double y) => OnDrop.InvokeAsync((handle, x, y));
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await (await Js.Module()).InvokeVoidAsync("disposeCanvas", _svg); }
+        catch (JSDisconnectedException) { }
+        _ref?.Dispose();
+    }
+}

@@ -51,9 +51,18 @@ public enum OffsetMode
     Manual,
 }
 
-public sealed record Point2(double X, double Y)
+/// <summary>座標點（cm）。可變類別，UI 才能直接繫結頂點座標。</summary>
+public sealed class Point2
 {
+    public double X { get; set; }
+    public double Y { get; set; }
+
+    public Point2() { }
+
+    public Point2(double x, double y) => (X, Y) = (x, y);
+
     public Vec2 ToVec() => new(X, Y);
+
     public static Point2 From(Vec2 v) => new(v.X, v.Y);
 }
 

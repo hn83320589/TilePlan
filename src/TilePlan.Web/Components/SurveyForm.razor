@@ -1,0 +1,138 @@
+@using TilePlan.Core.Survey
+
+<div class="panel">
+    <div class="row"><h3>牆長</h3><span class="spacer"></span>
+        <button class="btn small" @onclick="AddWall">加一面牆</button>
+        <button class="btn small" disabled="@(Shape.Walls.Count <= 3)" @onclick="RemoveWall">減一面</button>
+    </div>
+    <p class="small muted">從 A 角開始沿牆走一圈，依序輸入每面牆的長度（公分）。</p>
+    <table class="grid">
+        <tbody>
+            @for (int i = 0; i < Shape.Walls.Count; i++)
+            {
+                int index = i;
+                <tr>
+                    <td>@SurveySolver.LabelPair(i, (i + 1) % Shape.Walls.Count)</td>
+                    <td><input type="number" step="0.1" min="0" value="@Shape.Walls[index]" @onchange="e => SetWall(index, e.Value)" /></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <label class="check" style="margin-top: 8px"><input type="checkbox" @bind="Shape.Clockwise" @bind:after="Changed" />我是順時針方向量的（房間在右手邊）</label>
+</div>
+
+<div class="panel">
+    <div class="row"><h3>對角線</h3><span class="spacer"></span><button class="btn small" @onclick="AddDiagonal">加一條</button></div>
+    @if (Shape.Diagonals.Count == 0)
+    {
+        <p class="small muted">還沒有對角線。只量牆長時角度未知，至少要量 n − 3 條對角線。</p>
+    }
+    <table class="grid">
+        <tbody>
+            @for (int i = 0; i < Shape.Diagonals.Count; i++)
+            {
+                int index = i;
+                var d = Shape.Diagonals[i];
+                <tr>
+                    <td style="white-space: nowrap">
+                        <select value="@d.From" @onchange="e => SetDiagonal(index, from: ParseInt(e.Value))">
+                            @for (int v = 0; v < Shape.Walls.Count; v++) { <option value="@v">@SurveySolver.Label(v)</option> }
+                        </select>
+                        –
+                        <select value="@d.To" @onchange="e => SetDiagonal(index, to: ParseInt(e.Value))">
+                            @for (int v = 0; v < Shape.Walls.Count; v++) { <option value="@v">@SurveySolver.Label(v)</option> }
+                        </select>
+                    </td>
+                    <td><input type="number" step="0.1" min="0" value="@d.Length" @onchange="e => SetDiagonal(index, length: ParseDouble(e.Value))" /></td>
+                    <td><button class="btn small danger" @onclick="() => RemoveDiagonal(index)">✕</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (Result.Survey is { } survey)
+{
+    var cls = survey.Status == SurveyStatus.Solved ? (survey.MaxResidual > SurveySolver.ResidualWarning ? "warn" : "ok") : "warn";
+    <div class="notice @cls">
+        <p>@survey.Message</p>
+        @if (survey.SuggestedDiagonals.Count > 0)
+        {
+            <div class="row">
+                @foreach (var (from, to) in survey.SuggestedDiagonals)
+                {
+                    <button class="btn small" @onclick="() => AddSuggested(from, to)">加入 @SurveySolver.LabelPair(from, to)</button>
+                }
+            </div>
+        }
+        @if (survey.Status == SurveyStatus.Solved)
+        {
+            <p class="small" style="margin-top: 6px">最大殘差 @survey.MaxResidual.ToString("0.00") cm。
+                <button class="btn small" @onclick="OnConvert">轉成座標模式微調</button></p>
+        }
+    </div>
+}
+else if (Result.Error is not null)
+{
+    <div class="notice warn"><p>@Result.Error</p></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Room Room { get; set; } = default!;
+    [Parameter, EditorRequired] public RoomResult Result { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback OnConvert { get; set; }
+
+    private RoomShape Shape => Room.Shape;
+
+    private Task Changed() => OnChanged.InvokeAsync();
+
+    private static int ParseInt(object? v) => int.TryParse(v?.ToString(), out var i) ? i : 0;
+    private static double ParseDouble(object? v) => double.TryParse(v?.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
+
+    private Task SetWall(int i, object? value)
+    {
+        Shape.Walls[i] = ParseDouble(value);
+        return Changed();
+    }
+
+    private Task AddWall()
+    {
+        Shape.Walls.Add(100);
+        return Changed();
+    }
+
+    private Task RemoveWall()
+    {
+        int n = Shape.Walls.Count - 1;
+        Shape.Walls.RemoveAt(n);
+        Shape.Diagonals.RemoveAll(d => d.From >= n || d.To >= n);
+        return Changed();
+    }
+
+    private Task AddDiagonal()
+    {
+        var next = Result.Survey?.SuggestedDiagonals.FirstOrDefault() ?? (0, Math.Min(2, Shape.Walls.Count - 1));
+        Shape.Diagonals.Add(new Diagonal(next.Item1, next.Item2, 0));
+        return Changed();
+    }
+
+    private Task AddSuggested(int from, int to)
+    {
+        Shape.Diagonals.Add(new Diagonal(from, to, 0));
+        return Changed();
+    }
+
+    private Task SetDiagonal(int i, int? from = null, int? to = null, double? length = null)
+    {
+        var d = Shape.Diagonals[i];
+        Shape.Diagonals[i] = new Diagonal(from ?? d.From, to ?? d.To, length ?? d.Length);
+        return Changed();
+    }
+
+    private Task RemoveDiagonal(int i)
+    {
+        Shape.Diagonals.RemoveAt(i);
+        return Changed();
+    }
+}

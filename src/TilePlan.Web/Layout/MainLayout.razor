@@ -1,3 +1,78 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject ProjectStore Store
+@inject AutoSaveService AutoSave
+@inject NavigationManager Nav
 
-@Body
+<div class="shell">
+    <aside class="sidebar">
+        <a class="brand" href="">
+            <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+            TilePlan
+        </a>
+
+        <nav class="nav">
+            <NavLink href="" Match="NavLinkMatch.All">專案與單價</NavLink>
+        </nav>
+
+        <nav class="nav" aria-label="房間">
+            <div class="nav-group-title">房間</div>
+            @foreach (var room in Store.Project.Rooms)
+            {
+                var result = Store.Result(room);
+                <NavLink href="@($"room/{room.Id}")">
+                    <span>@room.Name</span>
+                    <span class="sub num">@(result.Ok ? $"{Fmt.D2(result.Area.M2Rounded)} m²" : "待補資料")</span>
+                </NavLink>
+            }
+            <button class="btn small" style="margin: 6px 10px 0" @onclick="AddRoom">新增房間</button>
+        </nav>
+
+        <nav class="nav">
+            <NavLink href="quote">報價單</NavLink>
+        </nav>
+
+        <div class="save-state @(AutoSave.LastError is null ? "" : "error")">
+            @if (AutoSave.LastError is not null)
+            {
+                @AutoSave.LastError
+            }
+            else if (AutoSave.LastSaved is { } saved)
+            {
+                <span>已自動儲存於瀏覽器（@saved.ToString("HH:mm:ss")）</span>
+            }
+            else
+            {
+                <span>修改會自動儲存在這個瀏覽器</span>
+            }
+        </div>
+    </aside>
+
+    <main class="main">
+        @Body
+    </main>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Store.Changed += Refresh;
+        AutoSave.Saved += Refresh;
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void AddRoom()
+    {
+        var room = RoomFactory.NewRectangle(Store.Project, $"房間 {Store.Project.Rooms.Count + 1}");
+        Store.Project.Rooms.Add(room);
+        Store.NotifyChanged();
+        Nav.NavigateTo($"room/{room.Id}");
+    }
+
+    public void Dispose()
+    {
+        Store.Changed -= Refresh;
+        AutoSave.Saved -= Refresh;
+    }
+}

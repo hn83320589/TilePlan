@@ -1,0 +1,68 @@
+@using TilePlan.Core.Cutting
+@using TilePlan.Core.Layout
+
+@if (!Result.Ok)
+{
+    <div class="notice warn"><p>無法產生切割清單：@Result.Error</p></div>
+}
+else
+{
+    var plan = Result.Cuts!;
+    var lay = Result.Layout!;
+    <div class="panel">
+        <div class="row">
+            <p style="margin: 0">共 <strong>@lay.CutCount</strong> 片切割片，需要 <strong>@plan.StockCount</strong> 片原磚
+                （其中 @plan.ReusedCount 片切割片使用前面切剩的餘料）。另需整片 @lay.FullCount 片。</p>
+            <span class="spacer"></span>
+            <label class="check"><input type="checkbox" @bind="_onlyReuse" />只看有重用的原磚</label>
+        </div>
+    </div>
+
+    <div class="stock-list">
+        @foreach (var stock in plan.StockTiles.Where(s => !_onlyReuse || s.Cuts.Count > 1))
+        {
+            bool hit = Highlight is { } h && stock.Cuts.Any(c => c.Piece.CutNo == h);
+            <section class="stock" id="@stock.Label" style="@(hit ? "border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink-soft)" : "")">
+                <h3><span>原磚 @stock.Label</span><span class="muted small">切 @stock.Cuts.Count 塊</span></h3>
+                <svg viewBox="@($"-1 {Svg.N(-plan.TileV - 1)} {Svg.N(plan.TileU + 2)} {Svg.N(plan.TileV + 2)}")">
+                    <g transform="scale(1,-1)">
+                        <rect class="svg-stock" x="0" y="0" width="@Svg.N(plan.TileU)" height="@Svg.N(plan.TileV)"></rect>
+                        @foreach (var cut in stock.Cuts)
+                        {
+                            var b = cut.Placed.Bounds;
+                            <path class="@(cut.FromOffcut ? "svg-reuse" : "svg-cut")" d="@Svg.Path(cut.Placed)"></path>
+                            @if (cut.Piece.CutNo == Highlight) { <path class="svg-selected" d="@Svg.Path(cut.Placed)"></path> }
+                            <SvgText X="(b.MinX + b.MaxX) / 2" Y="(b.MinY + b.MaxY) / 2" Size="Math.Max(plan.TileU, plan.TileV) / 14">@cut.Piece.Label</SvgText>
+                        }
+                    </g>
+                </svg>
+                <table class="grid">
+                    <thead><tr><th>切割片</th><th>鋪在</th><th class="num">外框 cm</th><th class="num">保留</th><th>說明</th></tr></thead>
+                    <tbody>
+                        @foreach (var cut in stock.Cuts)
+                        {
+                            var lb = cut.Piece.LocalBounds;
+                            var pos = lay.DisplayIndex(cut.Piece);
+                            <tr class="@(cut.Piece.CutNo == Highlight ? "highlight" : "")">
+                                <td>@cut.Piece.Label</td>
+                                <td>第 @pos.Row 排第 @pos.Column 欄</td>
+                                <td class="num">@Fmt.Cm(lb.Width) × @Fmt.Cm(lb.Height)</td>
+                                <td class="num">@((cut.Piece.Area / (plan.TileU * plan.TileV)).ToString("0%"))</td>
+                                <td>@(cut.FromOffcut ? "用餘料" : "新磚")@(cut.RotationDeg != 0 ? $"，轉 {cut.RotationDeg:0}°" : "")@(cut.Piece.Shape.Polygons.Count > 1 ? "，分成兩塊以上" : "")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public RoomResult Result { get; set; } = default!;
+
+    /// <summary>從排版畫面點進來時要標示的切割片編號。</summary>
+    [Parameter] public int? Highlight { get; set; }
+
+    private bool _onlyReuse;
+}
