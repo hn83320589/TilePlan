@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TilePlan.Core/TilePlan.Core.csproj" />
+    <Project Path="src/TilePlan.Web/TilePlan.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TilePlan.Core.Tests/TilePlan.Core.Tests.csproj" />
+    <Project Path="tests/TilePlan.Web.Tests/TilePlan.Web.Tests.csproj" />
+  </Folder>
+</Solution>
