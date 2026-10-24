@@ -16,3 +16,19 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
       - run: dotnet test --no-build -c Release --logger "console;verbosity=normal"
+
+  # 瀏覽器端對端測試：以發佈版跑關鍵流程（開啟範例、修改縫寬、列印報價單、自動儲存、實測提示）
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet publish src/TilePlan.Web -c Release -o site
+      - run: dotnet build tests/TilePlan.E2E.Tests -c Release
+      # 安裝 Chromium 與它需要的系統套件（含中文字型）
+      - run: pwsh tests/TilePlan.E2E.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - run: dotnet test tests/TilePlan.E2E.Tests -c Release --no-build --logger "console;verbosity=normal"
+        env:
+          TILEPLAN_SITE: ${{ github.workspace }}/site/wwwroot
