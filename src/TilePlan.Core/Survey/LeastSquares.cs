@@ -68,8 +68,8 @@ internal static class LeastSquares
         if (index >= 0) row[count++] = (index, value);
     }
 
-    private static int VarX(int v) => v == 0 ? -1 : v == 1 ? 0 : 2 * v - 3;
-    private static int VarY(int v) => v <= 1 ? -1 : 2 * v - 2;
+    internal static int VarX(int v) => v == 0 ? -1 : v == 1 ? 0 : 2 * v - 3;
+    internal static int VarY(int v) => v <= 1 ? -1 : 2 * v - 2;
 
     private static double[] Pack(Vec2[] p)
     {
@@ -90,6 +90,41 @@ internal static class LeastSquares
 
     private static double Cost(Vec2[] p, IReadOnlyList<(int From, int To, double Length)> bars) =>
         bars.Sum(b => { double r = p[b.From].DistanceTo(p[b.To]) - b.Length; return r * r; });
+
+    /// <summary>
+    /// 在解出的形狀上線性化，回傳 (JᵀJ)⁻¹（未知數同 <see cref="Refine"/> 的編號）。
+    /// 乘上量測誤差的變異數 σ² 即為座標的共變異數矩陣。量測不足以決定形狀時回傳 null。
+    /// </summary>
+    public static double[,]? InverseNormalMatrix(Vec2[] p, IReadOnlyList<(int From, int To, double Length)> bars)
+    {
+        int m = 2 * p.Length - 3;
+        var jtj = new double[m, m];
+        var row = new (int Index, double Value)[4];
+        foreach (var (i, j, _) in bars)
+        {
+            var d = p[i] - p[j];
+            double dist = d.Length;
+            if (dist < 1e-12) continue;
+            var g = d / dist;
+            int count = 0;
+            Add(ref count, row, VarX(i), g.X); Add(ref count, row, VarY(i), g.Y);
+            Add(ref count, row, VarX(j), -g.X); Add(ref count, row, VarY(j), -g.Y);
+            for (int a = 0; a < count; a++)
+                for (int b = 0; b < count; b++)
+                    jtj[row[a].Index, row[b].Index] += row[a].Value * row[b].Value;
+        }
+
+        var inverse = new double[m, m];
+        for (int c = 0; c < m; c++)
+        {
+            var unit = new double[m];
+            unit[c] = 1;
+            var column = Solve((double[,])jtj.Clone(), unit);
+            if (column is null) return null;
+            for (int r = 0; r < m; r++) inverse[r, c] = column[r];
+        }
+        return inverse;
+    }
 
     /// <summary>高斯消去（部分選主元）；奇異時回傳 null。</summary>
     private static double[]? Solve(double[,] a, double[] b)

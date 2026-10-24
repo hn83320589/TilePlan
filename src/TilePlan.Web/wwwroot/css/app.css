@@ -175,6 +175,7 @@ table.grid input[type="number"] { min-width: 70px; }
 .svg-dim { font-family: var(--font); fill: #6d5200; paint-order: stroke; stroke: var(--tape); stroke-width: 5px; stroke-linejoin: round; }
 .svg-grid { stroke: #edf0f0; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .svg-diag { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.svg-uncertainty { fill: rgba(242, 194, 48, 0.25); stroke: #c79a18; stroke-width: 1; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
 .svg-viol { fill: none; stroke: var(--danger); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 
 /* 實測推算的其他可能形狀（縮圖） */

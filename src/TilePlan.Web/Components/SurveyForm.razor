@@ -19,6 +19,7 @@
         </tbody>
     </table>
     <label class="check" style="margin-top: 8px"><input type="checkbox" @bind="Shape.Clockwise" @bind:after="Changed" />我是順時針方向量的（房間在右手邊）</label>
+    <label class="row small" style="margin-top: 8px">捲尺精度 ±<input class="narrow" type="number" step="1" min="0" @bind="Shape.TapePrecisionMm" @bind:after="Changed" aria-label="捲尺精度（mm）" style="width: 70px" />mm</label>
 </div>
 
 <div class="panel">
@@ -64,8 +65,20 @@
         }
         @if (survey.Status == SurveyStatus.Solved)
         {
-            <p class="small" style="margin-top: 6px">最大殘差 @survey.MaxResidual.ToString("0.00") cm。
-                <button class="btn small" @onclick="() => OnAdopt.InvokeAsync(survey.Polygon!)">轉成座標模式微調</button></p>
+            @if (survey.Redundancy > 0)
+            {
+                <p class="small" style="margin-top: 6px">@survey.Redundancy 條多餘量測，最大殘差 @survey.MaxResidual.ToString("0.0") cm。</p>
+            }
+            else if (survey.CheckDiagonal is { } check)
+            {
+                <button class="btn small" @onclick="() => AddSuggested(check.From, check.To)">加入 @SurveySolver.LabelPair(check.From, check.To) 作為檢核</button>
+            }
+            @if (survey.VertexUncertainty.Count > 0)
+            {
+                var worst = survey.VertexUncertainty.Select((u, i) => (u, i)).MaxBy(x => x.u);
+                <p class="small" style="margin-top: 6px">捲尺精度 ±@Fmt.Cm(Shape.TapePrecisionMm) mm 時，各角位置誤差最大約 ±@worst.u.ToString("0.0") cm（@SurveySolver.Label(worst.i) 角，95%）。</p>
+            }
+            <p class="small" style="margin-top: 6px"><button class="btn small" @onclick="() => OnAdopt.InvokeAsync(survey.Polygon!)">轉成座標模式微調</button></p>
         }
     </div>
 

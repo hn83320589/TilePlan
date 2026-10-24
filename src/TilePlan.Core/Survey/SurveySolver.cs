@@ -80,14 +80,31 @@ public static class SurveySolver
         var residuals = bars
             .Select(b => new MeasurementResidual(b.From, b.To, b.Length, solution[b.From].DistanceTo(solution[b.To]) - b.Length))
             .ToList();
-        var worst = residuals.MaxBy(r => Math.Abs(r.Residual))!;
-        string message = Math.Abs(worst.Residual) > ResidualWarning
-            ? $"形狀已解出，但量測可能有誤：{LabelPair(worst.From, worst.To)} 的殘差為 {worst.Residual:+0.0;-0.0} cm，請複量。"
-            : "形狀已解出。";
+        int redundancy = bars.Count - RigidityAnalyzer.RequiredRank(n);
+        var uncertainty = Uncertainty.Of(solution, bars.Select(b => (b.From, b.To, b.Length)).ToList(), input);
+        string message;
+        if (redundancy == 0)
+        {
+            // 量測剛好足夠時殘差必然為 0：顯示「殘差 0.00 cm」只會給人錯誤的信心
+            message = "形狀已解出。目前沒有多餘量測，無法檢查是否量錯。";
+            if (uncertainty.Check is { } c)
+                message += $"建議再量 {LabelPair(c.From, c.To)} 作為檢核：依捲尺精度推估約為 {c.Expected:0.0} ± {c.Range:0.0} cm，" +
+                           "量到的值若超出這個範圍，很可能有量測量錯。";
+        }
+        else
+        {
+            var worst = residuals.MaxBy(r => Math.Abs(r.Residual))!;
+            message = Math.Abs(worst.Residual) > ResidualWarning
+                ? $"形狀已解出，但量測可能有誤：{LabelPair(worst.From, worst.To)} 的殘差為 {worst.Residual:+0.0;-0.0} cm，請複量。"
+                : $"形狀已解出，{redundancy} 條多餘量測互相吻合（最大殘差 {Math.Abs(worst.Residual):0.0} cm）。";
+        }
 
         return new SurveyResult(SurveyStatus.Solved, new Polygon(solution), message, 0, [], residuals)
         {
             Alternatives = AlternativeShapes(search.ExteriorDiagonalShapes, solution, bars, input),
+            Redundancy = redundancy,
+            VertexUncertainty = uncertainty.Vertices,
+            CheckDiagonal = uncertainty.Check is { } check ? (check.From, check.To) : null,
         };
     }
 

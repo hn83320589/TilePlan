@@ -63,6 +63,10 @@
                     // ChildContent 會延後執行：迴圈變數要先複製，否則每個標籤都會讀到迴圈結束時的 i
                     var label = SurveySolver.Label(i);
                     <SvgText X="p.X + offset.X" Y="p.Y + offset.Y" Size="LabelSize * 1.1">@label</SvgText>
+                    @if (Shape.Kind == ShapeKind.Survey && Result.Survey?.VertexUncertainty is { Count: > 0 } u && i < u.Count && u[i] > 0)
+                    {
+                        <circle class="svg-uncertainty" cx="@Svg.N(p.X)" cy="@Svg.N(p.Y)" r="@Svg.N(u[i])"><title>@($"{label} 角位置誤差約 ±{u[i]:0.0} cm（95%）")</title></circle>
+                    }
                     @if (Shape.Kind == ShapeKind.Polygon)
                     {
                         <circle class="svg-handle" data-handle="@($"v{i}")" cx="@Svg.N(p.X)" cy="@Svg.N(p.Y)" r="@Svg.N(HandleRadius)"></circle>

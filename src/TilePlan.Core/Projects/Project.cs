@@ -81,7 +81,10 @@ public sealed class RoomShape
     /// <summary>實測時是否沿順時針方向量。</summary>
     public bool Clockwise { get; set; }
 
-    public SurveyInput ToSurvey() => new(Walls, Diagonals, Clockwise);
+    /// <summary>捲尺精度（mm）：95% 的量測誤差在 ±此值以內。</summary>
+    public double TapePrecisionMm { get; set; } = 5;
+
+    public SurveyInput ToSurvey() => new(Walls, Diagonals, Clockwise, TapePrecisionMm / 10);
 }
 
 public sealed class Exclusion
