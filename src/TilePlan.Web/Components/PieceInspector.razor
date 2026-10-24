@@ -24,15 +24,9 @@
             <g transform="scale(1,-1)">
                 <rect x="0" y="0" width="@Svg.N(Lattice.TileU)" height="@Svg.N(Lattice.TileV)" fill="white" stroke="var(--muted)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"></rect>
                 <path class="svg-cut" d="@Svg.Path(Piece.LocalShape)"></path>
-                @foreach (var poly in Piece.LocalShape.Polygons)
+                @foreach (var (mid, text) in EdgeLabels())
                 {
-                    @foreach (var (p, q) in poly.Edges())
-                    {
-                        var len = p.DistanceTo(q);
-                        if (len < Lattice.TileU / 12) continue;
-                        var mid = (p + q) / 2;
-                        <SvgText X="mid.X" Y="mid.Y" Size="Math.Max(Lattice.TileU, Lattice.TileV) / 14" CssClass="svg-dim">@Fmt.Cm(len)</SvgText>
-                    }
+                    <SvgText X="mid.X" Y="mid.Y" Size="LabelSize" CssClass="svg-dim">@text</SvgText>
                 }
             </g>
         </svg>
@@ -46,6 +40,20 @@
     [Parameter, EditorRequired] public LayoutResult Layout { get; set; } = default!;
 
     private Lattice Lattice => Layout.Lattice;
+
+    /// <summary>細長磚（例如 120 × 20）若用長邊決定字級，文字會超出磚面，所以同時受短邊限制。</summary>
+    private double LabelSize => Math.Min(Math.Max(Lattice.TileU, Lattice.TileV) / 14, Math.Min(Lattice.TileU, Lattice.TileV) * 0.3);
     private (int Row, int Column) Position => Layout.DisplayIndex(Piece);
+
+    /// <summary>
+    /// 切割形狀的邊長標示：同樣長度只標一次（細長條上下兩邊一樣長時，兩個標籤會疊在一起），
+    /// 太短放不下文字的邊略過（外框尺寸已列在上方）。
+    /// </summary>
+    private IEnumerable<(TilePlan.Core.Geometry.Vec2 Mid, string Text)> EdgeLabels() =>
+        Piece.LocalShape.Polygons
+            .SelectMany(poly => poly.Edges())
+            .Where(e => e.A.DistanceTo(e.B) >= LabelSize * 2.5)
+            .GroupBy(e => Fmt.Cm(e.A.DistanceTo(e.B)))
+            .Select(g => ((g.First().A + g.First().B) / 2, g.Key));
     [Parameter] public EventCallback<int> OnShowInCutList { get; set; }
 }

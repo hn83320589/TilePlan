@@ -29,10 +29,10 @@ else
                         <rect class="svg-stock" x="0" y="0" width="@Svg.N(plan.TileU)" height="@Svg.N(plan.TileV)"></rect>
                         @foreach (var cut in stock.Cuts)
                         {
-                            var b = cut.Placed.Bounds;
+                            var label = Svg.LabelPlacement(cut.Placed, Math.Min(Math.Max(plan.TileU, plan.TileV) / 14, Math.Min(plan.TileU, plan.TileV) * 0.35));
                             <path class="@(cut.FromOffcut ? "svg-reuse" : "svg-cut")" d="@Svg.Path(cut.Placed)"></path>
                             @if (cut.Piece.CutNo == Highlight) { <path class="svg-selected" d="@Svg.Path(cut.Placed)"></path> }
-                            <SvgText X="(b.MinX + b.MaxX) / 2" Y="(b.MinY + b.MaxY) / 2" Size="Math.Max(plan.TileU, plan.TileV) / 14">@cut.Piece.Label</SvgText>
+                            <SvgText X="label.At.X" Y="label.At.Y" Size="label.Size">@cut.Piece.Label</SvgText>
                         }
                     </g>
                 </svg>
