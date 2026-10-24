@@ -91,6 +91,9 @@ public sealed class Exclusion
 {
     public string Name { get; set; } = "不鋪設區";
     public List<Point2> Vertices { get; set; } = [];
+
+    /// <summary>邊緣是否也檢查切條寬度（例如廚具底座前緣）；舊專案檔沒有此欄位時預設開啟。</summary>
+    public bool CheckEdges { get; set; } = true;
 }
 
 public sealed class Room

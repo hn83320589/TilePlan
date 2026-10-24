@@ -77,7 +77,7 @@ public class OffsetOptimizerTests
         Assert.Contains(report.Reasons, r => r.Contains("交丁 1/3"));
         Assert.NotNull(report.MinWidth);
         Assert.True(report.MinWidth < 20);
-        Assert.Contains($"{report.MinWidth:0.0} cm", report.Reasons[0]);
+        Assert.Contains($"{report.Violations.Min(v => v.DisplayMinWidth):0.0} cm", report.Reasons[0]);
         Assert.Equal(report.MinWidth, report.Violations.Min(v => v.MinWidth));
     }
 
@@ -120,6 +120,27 @@ public class OffsetOptimizerTests
         Assert.Equal(6, report.Walls.Count);
         Assert.Equal(report.Satisfied, report.Reasons.Count == 0);
         Assert.Equal(report.Walls.Where(w => w.MinWidth is not null).Min(w => w.MinWidth), report.MinWidth);
+    }
+
+    [Fact]
+    public void Reported_minimum_is_never_rounded_up_to_the_threshold()
+    {
+        // 39.96 cm 若四捨五入顯示成 40.0，會出現「門檻 40.0，實際最小 40.0」卻判定不足的矛盾
+        var pattern = new System.Text.RegularExpressions.Regex(@"門檻 (?<t>[\d.]+) cm，實際最小 (?<m>[\d.]+) cm");
+        var failures = new List<string>();
+        foreach (var c in RandomRooms.Generate(90))
+        {
+            var room = c.Region.Polygons.Where(p => p.IsCounterClockwise).MaxBy(p => p.Area)!;
+            var result = OffsetOptimizer.Optimize(room, c.Region, Lattice.Create(c.Tile, c.Pattern, c.Baseline));
+            foreach (System.Text.RegularExpressions.Match m in result.Report.Reasons.SelectMany(r => pattern.Matches(r)))
+                if (double.Parse(m.Groups["m"].Value) >= double.Parse(m.Groups["t"].Value))
+                    failures.Add($"{c}：{m.Value}");
+            // 表格上顯示的數字比大小，必須與判定一致
+            foreach (var w in result.Report.Walls.Where(w => w.MinWidth is not null))
+                if ((w.DisplayMinWidth >= w.DisplayThreshold) != w.Satisfied)
+                    failures.Add($"{c}：{w.Display} 顯示 {w.DisplayMinWidth} / {w.DisplayThreshold}，判定 {w.Satisfied}");
+        }
+        Assert.True(failures.Count == 0, string.Join("\n", failures.Take(10)));
     }
 
     [Fact]

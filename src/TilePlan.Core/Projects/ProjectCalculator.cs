@@ -58,8 +58,12 @@ public static class ProjectCalculator
         try { tile.Validate(); }
         catch (ArgumentException ex) { return Fail(room, ex.Message, polygon, survey); }
 
-        var exclusions = room.Exclusions.Where(e => e.Vertices.Count >= 3).Select(e => new Polygon(e.Vertices.Select(v => v.ToVec()).ToArray()));
-        var region = Region.Tileable(polygon, exclusions);
+        var exclusions = room.Exclusions
+            .Where(e => e.Vertices.Count >= 3)
+            .Select(e => (Source: e, Shape: new Polygon(e.Vertices.Select(v => v.ToVec()).ToArray())))
+            .ToList();
+        var region = Region.Tileable(polygon, exclusions.Select(e => e.Shape));
+        var checkedEdges = exclusions.Where(e => e.Source.CheckEdges).Select(e => (e.Source.Name, e.Shape)).ToList();
         if (region.IsEmpty)
             return Fail(room, "扣除不鋪設區後沒有可鋪設的面積。", polygon, survey) with { Region = region };
 
@@ -68,13 +72,13 @@ public static class ProjectCalculator
         OffsetReport report;
         if (room.OffsetMode == OffsetMode.Auto)
         {
-            var optimized = OffsetOptimizer.Optimize(polygon, region, template);
+            var optimized = OffsetOptimizer.Optimize(polygon, region, template, checkedEdges);
             (layout, report) = (optimized.Layout, optimized.Report);
         }
         else
         {
             layout = LayoutEngine.Layout(region, template);
-            report = OffsetOptimizer.Report(polygon, layout);
+            report = OffsetOptimizer.Report(polygon, layout, checkedEdges);
         }
 
         var cuts = OffcutPlanner.Plan(layout, new CutSettings(room.ReuseOffcuts, room.AllowQuarterTurns, room.KerfMm / 10));

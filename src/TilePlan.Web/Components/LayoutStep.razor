@@ -40,6 +40,7 @@ else
                     }
                     <line class="svg-baseline" x1="@Svg.N(_baseA.X)" y1="@Svg.N(_baseA.Y)" x2="@Svg.N(_baseB.X)" y2="@Svg.N(_baseB.Y)"></line>
                     <circle cx="@Svg.N(Room.BaselineOrigin.X)" cy="@Svg.N(Room.BaselineOrigin.Y)" r="@Svg.N(Size / 120)" fill="var(--ink)"></circle>
+                    <path class="svg-small" d="@_smallPath"></path>
                     @if (_selected is not null)
                     {
                         <path class="svg-selected" d="@Svg.Path(_selected.Shape)"></path>
@@ -52,7 +53,8 @@ else
                 <span><i style="background: var(--glaze)"></i>使用餘料的切割片 @Result.Cuts.ReusedCount</span>
                 <span><i style="background: repeating-linear-gradient(45deg, #aab4b8 0 2px, #f1f3f3 2px 6px)"></i>不鋪設區</span>
                 <span><i style="background: none; border: 0; border-top: 2px dashed var(--ink); height: 0; width: 18px"></i>基準線</span>
-                @if (_violations.Count > 0) { <span><i style="background: none; border: 0; border-top: 3px solid var(--danger); height: 0; width: 18px"></i>切條不足的牆</span> }
+                @if (_violations.Count > 0) { <span><i style="background: none; border: 0; border-top: 3px solid var(--danger); height: 0; width: 18px"></i>切條不足的牆或邊緣</span> }
+                @if (_small.Count > 0) { <span><i style="background: none; border: 2px dashed var(--danger)"></i>細碎片 @_small.Count</span> }
             </div>
             <p class="small muted num" style="margin-top: 6px">
                 排版計算 @Store.LastComputeMilliseconds(Room).ToString("0") ms
@@ -65,7 +67,7 @@ else
         <div>
             @if (report.Satisfied)
             {
-                <div class="notice ok"><p>所有牆邊切條都不小於磚寬的 1/3@(report.MinWidth is { } m ? $"，最窄 {Fmt.Cm(m)} cm" : "")。</p></div>
+                <div class="notice ok"><p>所有牆邊與不鋪設區邊緣的切條都不小於磚寬的 1/3@(report.Walls.Where(w => w.DisplayMinWidth is not null).MinBy(w => w.MinWidth) is { } narrowest ? $"，最窄 {narrowest.DisplayMinWidth:0.0} cm（{narrowest.Display}）" : "")。</p></div>
             }
             else
             {
@@ -96,17 +98,38 @@ else
                 <p class="small muted" style="margin: 8px 0 0">箱數在報價單中依磁磚跨房間合併計算。</p>
             </div>
 
+            @if (_small.Count > 0)
+            {
+                <div class="panel">
+                    <h3>細碎片</h3>
+                    <p class="small muted">最小寬度小於磚短邊 1/3（@Fmt.Cm(Math.Min(lay.Lattice.TileU, lay.Lattice.TileV) / 3) cm）的切割片，不論在牆邊、不鋪設區邊緣或轉角。點選可在畫布上檢視。</p>
+                    <table class="grid small">
+                        <thead><tr><th>切割片</th><th>位置</th><th class="num">最小寬度</th></tr></thead>
+                        <tbody>
+                            @foreach (var (smallPiece, width) in _small.OrderBy(s => s.MinWidth).Take(12))
+                            {
+                                var pos = lay.DisplayIndex(smallPiece);
+                                <tr style="cursor: pointer" @onclick="() => _selected = smallPiece">
+                                    <td>@smallPiece.Label</td><td>第 @pos.Row 排第 @pos.Column 欄</td><td class="num">@Fmt.Cm(width) cm</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (_small.Count > 12) { <p class="small muted" style="margin: 6px 0 0">另有 @(_small.Count - 12) 片。</p> }
+                </div>
+            }
+
             <div class="panel">
-                <h3>牆邊切條</h3>
+                <h3>牆邊與不鋪設區邊緣的切條</h3>
                 <table class="grid small">
                     <thead><tr><th>牆</th><th class="num">最窄</th><th class="num">門檻</th></tr></thead>
                     <tbody>
                         @foreach (var w in report.Walls)
                         {
                             <tr style="@(w.Satisfied ? "" : "color: var(--danger)")">
-                                <td>@w.Name@(w.Oblique ? $"（斜 {w.AngleToGridDeg:0.#}°）" : "")</td>
-                                <td class="num">@(w.MinWidth is { } mw ? Fmt.Cm(mw) : "無切割")</td>
-                                <td class="num">@Fmt.Cm(w.Threshold)</td>
+                                <td>@w.Display@(w.Oblique ? $"（斜 {w.AngleToGridDeg:0.#}°）" : "")</td>
+                                <td class="num">@(w.DisplayMinWidth is { } mw ? mw.ToString("0.0") : "無切割")</td>
+                                <td class="num">@w.DisplayThreshold.ToString("0.0")</td>
                             </tr>
                         }
                     </tbody>
@@ -123,7 +146,8 @@ else
     [Parameter] public EventCallback<int> OnShowInCutList { get; set; }
 
     private RoomResult? _renderedFor;
-    private string _regionPath = "", _roomPath = "", _fullPath = "", _cutPath = "", _reusePath = "";
+    private string _regionPath = "", _roomPath = "", _fullPath = "", _cutPath = "", _reusePath = "", _smallPath = "";
+    private IReadOnlyList<(Piece Piece, double MinWidth)> _small = [];
     private List<(Vec2 A, Vec2 B)> _violations = [];
     private Vec2 _baseA, _baseB;
     private Bounds _view;
@@ -151,8 +175,11 @@ else
         _cutPath = Svg.Path(lay.CutPieces.Where(p => !reused.Contains(p.CutNo)).Select(p => p.Shape));
         _reusePath = Svg.Path(lay.CutPieces.Where(p => reused.Contains(p.CutNo)).Select(p => p.Shape));
 
+        _small = lay.SmallPieces();
+        _smallPath = Svg.Path(_small.Select(s => s.Piece.Shape));
+
         var poly = Result.Polygon!;
-        _violations = Result.Offset!.Violations.Select(w => (poly[w.Index], poly[(w.Index + 1) % poly.Count])).ToList();
+        _violations = Result.Offset!.Violations.Select(w => (w.A, w.B)).ToList();
 
         if (_viewFor != Room.Id) { _viewFor = Room.Id; _view = poly.Bounds; }
         double reach = Math.Sqrt(_view.Width * _view.Width + _view.Height * _view.Height);

@@ -74,6 +74,9 @@
                     }
                     <button class="btn small danger" @onclick="() => Remove(index)" @onclick:stopPropagation>刪除</button>
                 </div>
+                <label class="check small" style="margin-top: 6px" @onclick:stopPropagation>
+                    <input type="checkbox" @bind="ex.CheckEdges" @bind:after="Commit" />邊緣也檢查切條寬度（例如廚具前緣）
+                </label>
                 @if (k == _selected)
                 {
                     <table class="grid" style="margin-top: 8px">

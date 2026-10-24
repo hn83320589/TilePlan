@@ -24,9 +24,10 @@ public static class OffsetOptimizer
     private const int RefineSamples = 8;
     private const int MaxRounds = 3;
 
-    public static OffsetResult Optimize(Polygon room, Region region, Lattice template)
+    /// <param name="checkedExclusions">邊緣也要檢查切條寬度的不鋪設區（例如廚具底座前緣）。</param>
+    public static OffsetResult Optimize(Polygon room, Region region, Lattice template, IReadOnlyList<(string Name, Polygon Shape)>? checkedExclusions = null)
     {
-        var walls = Wall.Of(room, template);
+        var walls = EdgesToCheck(room, region, template, checkedExclusions);
         var search = new Search(walls, template);
         var best = search.Run(feasibleOnly: null);
 
@@ -41,8 +42,11 @@ public static class OffsetOptimizer
     }
 
     /// <summary>手動偏移時，同樣以精確排版產生切條報告。</summary>
-    public static OffsetReport Report(Polygon room, LayoutResult layout) =>
-        BuildReport(room, layout, Wall.Of(room, layout.Lattice), bestSeen: null);
+    public static OffsetReport Report(Polygon room, LayoutResult layout, IReadOnlyList<(string Name, Polygon Shape)>? checkedExclusions = null) =>
+        BuildReport(room, layout, EdgesToCheck(room, layout.Region, layout.Lattice, checkedExclusions), bestSeen: null);
+
+    private static List<Wall> EdgesToCheck(Polygon room, Region region, Lattice lattice, IReadOnlyList<(string Name, Polygon Shape)>? checkedExclusions) =>
+        [.. Wall.Of(room, lattice), .. Wall.ExclusionEdges(room, region, checkedExclusions ?? [], lattice)];
 
     private sealed record Candidate(double U, double V, Score Score);
 
@@ -138,7 +142,7 @@ public static class OffsetOptimizer
             for (int k = 0; k < walls.Count; k++)
             {
                 var w = walls[k];
-                var metric = EdgeStripEvaluator.Evaluate(w, walls[(k + walls.Count - 1) % walls.Count], walls[(k + 1) % walls.Count], lattice);
+                var metric = EdgeStripEvaluator.Evaluate(w, w.Previous, w.Next, lattice);
                 straddling += metric.Straddling;
                 double width = metric.MinWidth ?? double.PositiveInfinity;
                 _widths[k] = Math.Min(width, FullDepth(w));
@@ -218,13 +222,22 @@ public static class OffsetOptimizer
 
     private static OffsetReport BuildReport(Polygon room, LayoutResult layout, List<Wall> walls, Func<Wall, double>? bestSeen)
     {
-        var strips = walls.Select(w => new WallStrip(w.Index, w.Name, w.Threshold, ActualMinWidth(w, walls, layout), w.Axis == WallAxis.Oblique, w.AngleToGridDeg)).ToList();
+        var strips = walls.Select(w => new WallStrip(w.Index, w.Name, w.Threshold, ActualMinWidth(w, walls, layout), w.Axis == WallAxis.Oblique, w.AngleToGridDeg)
+        {
+            A = w.A,
+            B = w.B,
+            IsExclusionEdge = w.IsExclusionEdge,
+        }).ToList();
         var reasons = new List<string>();
         var violations = strips.Where(s => !s.Satisfied).ToList();
         if (violations.Count > 0)
         {
-            double min = violations.Min(v => v.MinWidth!.Value);
-            reasons.Add($"有 {violations.Count} 面牆的切條小於磚寬的 1/3，實際最小寬度 {min:0.0} cm。");
+            double min = violations.Min(v => v.DisplayMinWidth!.Value);
+            int edges = violations.Count(v => v.IsExclusionEdge);
+            string where = edges == 0 ? $"{violations.Count} 面牆"
+                : edges == violations.Count ? $"{edges} 處不鋪設區邊緣"
+                : $"{violations.Count - edges} 面牆與 {edges} 處不鋪設區邊緣";
+            reasons.Add($"有 {where}的切條小於磚寬的 1/3，實際最小寬度 {min:0.0} cm。");
             foreach (var v in violations)
                 reasons.Add(Explain(v, walls, layout.Lattice, bestSeen));
         }
@@ -234,22 +247,24 @@ public static class OffsetOptimizer
     private static string Explain(WallStrip strip, List<Wall> walls, Lattice lattice, Func<Wall, double>? bestSeen)
     {
         var wall = walls.First(w => w.Index == strip.Index);
-        string tail = $"（門檻 {strip.Threshold:0.0} cm，實際最小 {strip.MinWidth:0.0} cm）";
+        string tail = $"（門檻 {strip.DisplayThreshold:0.0} cm，實際最小 {strip.DisplayMinWidth:0.0} cm）";
 
         if (lattice.BondPeriod == 3 && wall.Axis == WallAxis.AlongV)
-            return $"交丁 1/3：牆 {strip.Name} 每三排的切條寬度各差 1/3 磚長，無法同時都 ≥ 門檻{tail}。";
+            return $"交丁 1/3：{wall.Display} 每三排的切條寬度各差 1/3 磚長，無法同時都 ≥ 門檻{tail}。";
         bool feasibleAlone = bestSeen is not null && bestSeen(wall) >= wall.Threshold - 1e-6;
         if (wall.Axis == WallAxis.Oblique && !feasibleAlone)
-            return $"斜牆 {strip.Name} 與磚縫夾 {strip.AngleToGridDeg:0.#}°，沿牆必然出現三角形小片{tail}。";
+            return wall.IsExclusionEdge
+                ? $"{wall.Display} 與磚縫夾 {strip.AngleToGridDeg:0.#}°，沿邊必然出現三角形小片{tail}。"
+                : $"斜牆 {strip.Name} 與磚縫夾 {strip.AngleToGridDeg:0.#}°，沿牆必然出現三角形小片{tail}。";
         if (feasibleAlone)
         {
-            var others = walls.Where(w => w.Index != wall.Index && w.IsParallelTo(wall)).Select(w => w.Name).ToList();
+            var others = walls.Where(w => w.Index != wall.Index && w.IsParallelTo(wall)).Select(w => w.Display).ToList();
             if (others.Count > 0)
-                return $"牆 {strip.Name} 與 {string.Join("、", others)} 對偏移的要求互相衝突，無法同時滿足{tail}。";
+                return $"{wall.Display} 與 {string.Join("、", others)} 對偏移的要求互相衝突，無法同時滿足{tail}。";
         }
         if (bestSeen is null)
-            return $"牆 {strip.Name} 的切條小於門檻，可改用自動偏移{tail}。";
-        return $"牆 {strip.Name} 附近受轉角或不鋪設區影響，切條小於門檻{tail}。";
+            return $"{wall.Display} 的切條小於門檻，可改用自動偏移{tail}。";
+        return $"{wall.Display} 附近受轉角或其他邊緣影響，切條小於門檻{tail}。";
     }
 
     /// <summary>
