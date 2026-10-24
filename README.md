@@ -5,6 +5,7 @@
 - **線上 Demo**：<https://hn83320589.github.io/TilePlan/>
 - **技術**：.NET 10、Blazor WebAssembly（純前端，不需要後端）、Clipper2（多邊形布林運算）
 - **系統分析與架構設計**：[docs/architecture.md](docs/architecture.md)
+- **測試報告**：[docs/test-report.md](docs/test-report.md)
 
 ![排版結果：L 形客廳交丁 1/3](docs/images/layout-running-bond.png)
 
